@@ -1,26 +1,16 @@
 #!/usr/bin/env Rscript
 
-suppressPackageStartupMessages({
-  required_packages <- c("readxl", "writexl", "dplyr", "stringr", "purrr", "tidyr")
-  missing_packages <- required_packages[!vapply(required_packages, requireNamespace, logical(1), quietly = TRUE)]
-  if (length(missing_packages) > 0) {
-    stop(
-      paste0(
-        "Pacotes em falta: ",
-        paste(missing_packages, collapse = ", "),
-        ". Instale-os com install.packages() antes de executar este script."
-      ),
-      call. = FALSE
-    )
-  }
-})
+required_packages <- c("readxl", "writexl", "dplyr", "stringr", "purrr", "tidyr")
 
-library(readxl)
-library(writexl)
-library(dplyr)
-library(stringr)
-library(purrr)
-library(tidyr)
+ensure_package <- function(pkg) {
+  if (!requireNamespace(pkg, quietly = TRUE)) {
+    message("A instalar pacote obrigatório: ", pkg)
+    install.packages(pkg, repos = "https://cloud.r-project.org", dependencies = TRUE)
+  }
+  suppressPackageStartupMessages(require(pkg, character.only = TRUE))
+}
+
+invisible(vapply(required_packages, ensure_package, logical(1)))
 
 cat("=== Processamento de autores (Web of Science) ===\n")
 folder_path <- readline(prompt = "Introduza o caminho completo da pasta que contém o ficheiro Excel: ")
