@@ -1,11 +1,20 @@
 #!/usr/bin/env Rscript
 
+options(repos = c(CRAN = "https://cloud.r-project.org"))
+user_library <- Sys.getenv("R_LIBS_USER")
+if (user_library != "" && !dir.exists(user_library)) {
+  dir.create(user_library, recursive = TRUE, showWarnings = FALSE)
+}
+if (user_library != "") {
+  .libPaths(unique(c(user_library, .libPaths())))
+}
+
 required_packages <- c("readxl", "writexl", "dplyr", "stringr", "purrr", "tidyr")
 
 for (pkg in required_packages) {
   if (!requireNamespace(pkg, quietly = TRUE)) {
     message("A instalar pacote obrigatório: ", pkg)
-    install.packages(pkg, repos = "https://cloud.r-project.org", dependencies = TRUE)
+    install.packages(pkg, lib = if (user_library == "") NULL else user_library, dependencies = TRUE)
   }
   suppressPackageStartupMessages(library(pkg, character.only = TRUE))
 }
