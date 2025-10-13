@@ -2,15 +2,13 @@
 
 required_packages <- c("readxl", "writexl", "dplyr", "stringr", "purrr", "tidyr")
 
-ensure_package <- function(pkg) {
+for (pkg in required_packages) {
   if (!requireNamespace(pkg, quietly = TRUE)) {
     message("A instalar pacote obrigatório: ", pkg)
     install.packages(pkg, repos = "https://cloud.r-project.org", dependencies = TRUE)
   }
-  suppressPackageStartupMessages(require(pkg, character.only = TRUE))
+  suppressPackageStartupMessages(library(pkg, character.only = TRUE))
 }
-
-invisible(vapply(required_packages, ensure_package, logical(1)))
 
 cat("=== Processamento de autores (Web of Science) ===\n")
 folder_path <- readline(prompt = "Introduza o caminho completo da pasta que contém o ficheiro Excel: ")
