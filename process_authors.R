@@ -344,6 +344,7 @@ orcid_col <- find_column(
     "orcid",
     "orcid id",
     "orcidid",
+    "orcids",
     "oi",
     "researcher ids / orcid (wos)",
     "researcher ids / orcid",
