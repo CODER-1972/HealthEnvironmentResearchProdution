@@ -22,7 +22,6 @@ for (pkg in required_packages) {
 cat("=== Processamento de autores (Web of Science) ===\n")
 folder_path <- readline(prompt = "Introduza o caminho completo da pasta que contém o ficheiro Excel: ")
 folder_path <- str_trim(folder_path)
-    
 if (str_starts(folder_path, "\"") && str_ends(folder_path, "\"")) {
   folder_path <- str_sub(folder_path, 2, -2)
 }
@@ -35,7 +34,6 @@ if (folder_path != "") {
     folder_path <- normalizePath(folder_path, winslash = "/", mustWork = FALSE)
   })
 }
-
 if (folder_path == "") {
   folder_path <- getwd()
   message("Nenhum caminho indicado. A pasta atual será utilizada: ", folder_path)
@@ -236,7 +234,7 @@ parse_affiliation_entries <- function(value, row_id) {
     return(tibble(RowID = integer(), AutorKey = character(), Affiliation = character()))
   }
   cleaned <- str_replace_all(value, "\\r\\n|\\n", " ")
-  pattern <- "\\\\[(.*?)\\\\]\\\\s*([^\\\\[]+)"
+  pattern <- "\\[(.*?)\\]\\s*([^\\[]+)"
   matches <- str_match_all(cleaned, pattern)[[1]]
   if (nrow(matches) == 0) {
     affiliation <- str_squish(cleaned)
