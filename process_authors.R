@@ -22,13 +22,37 @@ for (pkg in required_packages) {
 cat("=== Processamento de autores (Web of Science) ===\n")
 folder_path <- readline(prompt = "Introduza o caminho completo da pasta que contém o ficheiro Excel: ")
 folder_path <- str_trim(folder_path)
+    
+if (str_starts(folder_path, "\"") && str_ends(folder_path, "\"")) {
+  folder_path <- str_sub(folder_path, 2, -2)
+}
+if (str_starts(folder_path, "'") && str_ends(folder_path, "'")) {
+  folder_path <- str_sub(folder_path, 2, -2)
+}
+if (folder_path != "") {
+  folder_path <- path.expand(folder_path)
+  suppressWarnings({
+    folder_path <- normalizePath(folder_path, winslash = "/", mustWork = FALSE)
+  })
+}
+
 if (folder_path == "") {
   folder_path <- getwd()
   message("Nenhum caminho indicado. A pasta atual será utilizada: ", folder_path)
 }
 
+if (.Platform$OS.type != "windows" && str_detect(folder_path, "^[A-Za-z]:\\\\")) {
+  stop(
+    "O caminho indicado parece ser do Windows (", folder_path, "), mas o ambiente atual não consegue aceder a discos locais. ",
+    "Carregue o ficheiro para a área de trabalho atual ou forneça um caminho válido neste sistema."
+  )
+}
+
 if (!dir.exists(folder_path)) {
-  stop("A pasta indicada não existe: ", folder_path)
+  stop(
+    "A pasta indicada não existe: ", folder_path,
+    ". Verifique se o caminho está correto e acessível a partir deste ambiente."
+  )
 }
 
 excel_files <- list.files(folder_path, pattern = "\\.xlsx$|\\.xls$", ignore.case = TRUE, full.names = TRUE)
@@ -94,45 +118,63 @@ split_authors <- function(value) {
 }
 
 make_author_key <- function(name) {
-  if (is.na(name) || length(name) == 0) {
-    return(NA_character_)
+  if (length(name) == 0) {
+    return(character())
   }
-  cleaned <- strip_diacritics(name)
-  cleaned <- str_replace_all(cleaned, "\\r\\n|\\n", " ")
-  cleaned <- str_replace_all(cleaned, "\\.+", "")
-  cleaned <- str_squish(cleaned)
-  if (cleaned == "") {
-    return(NA_character_)
-  }
-  cleaned_upper <- str_to_upper(cleaned)
-  if (str_detect(cleaned_upper, ",")) {
-    parts <- str_split_fixed(cleaned_upper, ",", 2)
-    surname <- str_squish(parts[, 1])
-    given <- str_squish(parts[, 2])
-  } else {
-    pieces <- str_split(cleaned_upper, "\\s+")[[1]]
-    pieces <- pieces[pieces != ""]
-    if (length(pieces) == 0) {
-      return(NA_character_)
-    }
-    surname <- pieces[1]
-    if (length(pieces) > 1) {
-      given <- str_trim(paste(pieces[-1], collapse = " "))
-    } else {
-      given <- ""
-    }
-  }
-  if (surname == "") {
-    return(NA_character_)
-  }
-  given_parts <- str_split(given, "\\s+")[[1]]
-  given_parts <- given_parts[given_parts != ""]
-  initials <- if (length(given_parts) == 0) "" else paste0(str_sub(given_parts, 1, 1), collapse = "")
-  key <- str_trim(paste(surname, initials))
-  if (key == "") NA_character_ else key
+  vapply(
+    name,
+    function(single) {
+      if (is.null(single) || length(single) == 0) {
+        return(NA_character_)
+      }
+      single <- as.character(single)[1]
+      if (is.na(single)) {
+        return(NA_character_)
+      }
+      cleaned <- strip_diacritics(single)
+      cleaned <- str_replace_all(cleaned, "\\r\\n|\\n", " ")
+      cleaned <- str_replace_all(cleaned, "\\.+", "")
+      cleaned <- str_squish(cleaned)
+      if (cleaned == "") {
+        return(NA_character_)
+      }
+      cleaned_upper <- str_to_upper(cleaned)
+      if (str_detect(cleaned_upper, ",")) {
+        parts <- str_split_fixed(cleaned_upper, ",", 2)
+        surname <- str_squish(parts[, 1])
+        given <- str_squish(parts[, 2])
+      } else {
+        pieces <- str_split(cleaned_upper, "\\s+")[[1]]
+        pieces <- pieces[pieces != ""]
+        if (length(pieces) == 0) {
+          return(NA_character_)
+        }
+        surname <- pieces[1]
+        if (length(pieces) > 1) {
+          given <- str_trim(paste(pieces[-1], collapse = " "))
+        } else {
+          given <- ""
+        }
+      }
+      if (surname == "") {
+        return(NA_character_)
+      }
+      given_parts <- str_split(given, "\\s+")[[1]]
+      given_parts <- given_parts[given_parts != ""]
+      initials <- if (length(given_parts) == 0) "" else paste0(str_sub(given_parts, 1, 1), collapse = "")
+      key <- str_trim(paste(surname, initials))
+      if (key == "") NA_character_ else key
+    },
+    character(1),
+    USE.NAMES = FALSE
+  )
 }
 
 make_author_key_from_token <- function(token) {
+  if (is.null(token) || length(token) == 0) {
+    return(NA_character_)
+  }
+  token <- token[1]
   if (is.na(token) || token == "") {
     return(NA_character_)
   }
@@ -152,7 +194,8 @@ make_author_key_from_token <- function(token) {
       upper <- paste0(pieces[1], ",")
     }
   }
-  make_author_key(upper)
+  key <- make_author_key(upper)
+  if (length(key) == 0) NA_character_ else key[[1]]
 }
 
 parse_orcid_entries <- function(value) {
