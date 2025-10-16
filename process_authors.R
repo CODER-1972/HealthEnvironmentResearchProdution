@@ -336,7 +336,22 @@ author_counts <- author_rows %>%
 author_rows <- author_rows %>%
   left_join(author_counts, by = "RowID")
 
-orcid_col <- find_column(data, c("author identifiers", "identificadores de autores", "orcid", "orcid id", "orcidid", "oi"))
+orcid_col <- find_column(
+  data,
+  c(
+    "author identifiers",
+    "identificadores de autores",
+    "orcid",
+    "orcid id",
+    "orcidid",
+    "oi",
+    "researcher ids / orcid (wos)",
+    "researcher ids / orcid",
+    "researcher ids",
+    "researcherid",
+    "researcherid numbers"
+  )
+)
 affiliation_col <- find_column(
   data,
   c(
