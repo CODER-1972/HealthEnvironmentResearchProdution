@@ -207,7 +207,10 @@ parse_orcid_entries <- function(value) {
   if (length(tokens) == 0) {
     return(tibble(AutorKey = character(), ORCID = character()))
   }
-  orcid_pattern <- "(?i)(?:https?://orcid\\.org/)?(\\\\d{4}[-\\\\s]\\\\d{4}[-\\\\s]\\\\d{4}[-\\\\s][\\\\dX]{4})"
+  orcid_pattern <- regex(
+    "(?:https?://orcid\\.org/)?([0-9]{4}[-\\s]?[0-9]{4}[-\\s]?[0-9]{4}[-\\s]?[0-9X]{4})",
+    ignore_case = TRUE
+  )
   map_dfr(tokens, function(token) {
     matches <- str_match_all(token, orcid_pattern)[[1]]
     if (nrow(matches) == 0) {
