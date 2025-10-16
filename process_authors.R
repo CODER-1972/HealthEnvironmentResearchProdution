@@ -22,6 +22,7 @@ for (pkg in required_packages) {
 cat("=== Processamento de autores (Web of Science) ===\n")
 folder_path <- readline(prompt = "Introduza o caminho completo da pasta que contém o ficheiro Excel: ")
 folder_path <- str_trim(folder_path)
+    
 if (str_starts(folder_path, "\"") && str_ends(folder_path, "\"")) {
   folder_path <- str_sub(folder_path, 2, -2)
 }
@@ -34,6 +35,7 @@ if (folder_path != "") {
     folder_path <- normalizePath(folder_path, winslash = "/", mustWork = FALSE)
   })
 }
+
 if (folder_path == "") {
   folder_path <- getwd()
   message("Nenhum caminho indicado. A pasta atual será utilizada: ", folder_path)
