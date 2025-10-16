@@ -291,10 +291,7 @@ combine_orcid <- function(values) {
   if (length(values) == 0) {
     return(NA_character_)
   }
-  if (length(values) > 1) {
-    warning("Foram encontrados múltiplos ORCID para um mesmo autor. Será utilizado o primeiro valor disponível.")
-  }
-  values[[1]]
+  paste(values, collapse = "; ")
 }
 
 split_affiliations <- function(values) {
