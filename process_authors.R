@@ -200,7 +200,7 @@ parse_orcid_entries <- function(value) {
   if (is.null(value) || all(is.na(value))) {
     return(tibble(AutorKey = character(), ORCID = character()))
   }
-  value <- str_replace_all(value, "\\r\\n|\\n", " ")
+  value <- str_replace_all(value, "\\r\\n|\\n", "; ")
   tokens <- str_split(value, ";\\s*")[[1]]
   tokens <- str_trim(tokens)
   tokens <- tokens[tokens != ""]
@@ -214,19 +214,21 @@ parse_orcid_entries <- function(value) {
       return(tibble(AutorKey = character(), ORCID = character()))
     }
     orcids <- matches[, ncol(matches)]
-    orcids <- str_replace_all(orcids, "\\s", "-")
+    orcids <- str_replace_all(orcids, "[\\s−–—]", "-")
     orcids <- str_replace_all(orcids, "-+", "-")
     orcids <- str_to_upper(orcids)
     name_part <- NA_character_
     if (str_detect(token, "/")) {
-      name_part <- str_trim(str_split(token, "/")[[1]][1])
-    } else {
+      name_part <- str_split(token, "\\s*/\\s*", n = 2)[[1]]
+      name_part <- str_trim(name_part[1])
+    }
+    if (is.na(name_part) || name_part == "") {
       without_orcid <- token
       for (current in matches[, 1]) {
         without_orcid <- str_replace(without_orcid, fixed(current), " ")
       }
       without_orcid <- str_remove_all(without_orcid, "https?://orcid\\.org/?")
-      without_orcid <- str_remove(without_orcid, "(?i)orcid[:]?$")
+      without_orcid <- str_remove(without_orcid, "(?i)orcid[:]?")
       without_orcid <- str_squish(without_orcid)
       without_orcid <- str_remove(without_orcid, "[,/;]+$")
       if (without_orcid != "") {
@@ -234,7 +236,10 @@ parse_orcid_entries <- function(value) {
       }
     }
     autor_key <- if (!is.na(name_part) && name_part != "") make_author_key(name_part) else NA_character_
-    tibble(AutorKey = autor_key, ORCID = orcids)
+    if (length(autor_key) == 0) {
+      autor_key <- NA_character_
+    }
+    tibble(AutorKey = rep_len(autor_key, length(orcids)), ORCID = orcids)
   }) %>%
     distinct()
 }
