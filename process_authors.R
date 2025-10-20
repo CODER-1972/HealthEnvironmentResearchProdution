@@ -823,7 +823,7 @@ author_similarity_tokens <- block_author_details %>%
   filter(!is.na(SurnameInitial) & SurnameInitial != "") %>%
   mutate(InstituicaoTokens = map(InstituicaoTokens, ~ unique(.x))) %>%
   filter(map_int(InstituicaoTokens, length) > 0) %>%
-  unnest(InstituicaoTokens, values_to = "InstituicaoToken") %>%
+  unnest_longer(InstituicaoTokens, values_to = "InstituicaoToken") %>%
   mutate(
     InstituicaoKey = normalize_institution_token(InstituicaoToken)
   ) %>%
