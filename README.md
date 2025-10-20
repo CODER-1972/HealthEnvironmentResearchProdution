@@ -52,14 +52,16 @@ Será solicitada a pasta onde se encontra o ficheiro Excel exportado do Web of
 Science, e o script gera `autores_unicos.xlsx` com duas folhas:
 
 1. **Autores** – Lista consolidada de autores, ORCID e instituições, preservando
-   nomes sem ORCID com a coluna respetiva em branco.
+   nomes sem ORCID com a coluna respetiva em branco e ordenando
+   alfabeticamente pelo nome do autor (entradas sem nome são listadas no fim).
 2. **ORCID Agrupados** – Entradas com o mesmo ORCID são agregadas numa única
    linha: a coluna de nomes reúne os autores separados por `;` na mesma ordem
    em que surgem na folha principal, a coluna de ORCID reutiliza os mesmos
    blocos de identificadores de cada autor (mantendo juntos ORCID múltiplos
    já combinados na folha principal) e a coluna de instituições alinha as
    informações correspondentes, mantendo igualmente os autores sem ORCID na sua
-   posição original.
+   posição original. Esta folha é igualmente ordenada alfabeticamente pelo
+   primeiro nome listado (entradas sem nome surgem no final).
 
 > ℹ️ **Importante:** Em ambientes remotos (por exemplo, Posit Cloud) não é
 > possível aceder diretamente a discos locais como `C:\\Users\\...`. Carregue o

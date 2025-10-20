@@ -499,7 +499,12 @@ author_summary <- author_summary %>%
   arrange(OrderIndex)
 
 result <- author_summary %>%
-  select(Autor, ORCID, Instituicoes)
+  select(Autor, ORCID, Instituicoes) %>%
+  mutate(
+    AutorOrdenacao = str_trim(coalesce(Autor, ""))
+  ) %>%
+  arrange(AutorOrdenacao == "", AutorOrdenacao) %>%
+  select(-AutorOrdenacao)
 
 author_rows_for_groups <- author_summary %>%
   filter(Autor != "") %>%
@@ -620,7 +625,10 @@ grouped_orcid <- if (length(component_indices) == 0) {
 }
 
 orcid_groups <- bind_rows(grouped_orcid, without_orcid) %>%
-  arrange(Ordem, Autores) %>%
+  mutate(
+    PrimeiroAutor = str_trim(coalesce(str_split_fixed(Autores, ";", 2)[, 1], ""))
+  ) %>%
+  arrange(PrimeiroAutor == "", PrimeiroAutor, Autores) %>%
   select(Autores, ORCIDs, Instituicoes)
 
 if (nrow(orcid_groups) == 0) {
