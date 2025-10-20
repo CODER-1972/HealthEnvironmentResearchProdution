@@ -375,13 +375,28 @@ collect_affiliation_tokens <- function(values) {
 }
 
 normalize_institution_token <- function(value) {
-  if (is.null(value) || is.na(value)) {
-    return("")
+  if (length(value) == 0) {
+    return(character())
   }
-  normalized <- strip_diacritics(value)
-  normalized <- str_to_lower(normalized)
-  normalized <- str_replace_all(normalized, "[^a-z0-9]+", " ")
-  str_squish(normalized)
+  vapply(
+    value,
+    function(single) {
+      if (is.null(single) || length(single) == 0) {
+        return("")
+      }
+      single <- as.character(single)[1]
+      if (is.na(single)) {
+        return("")
+      }
+      normalized <- strip_diacritics(single)
+      normalized <- str_to_lower(normalized)
+      normalized <- str_replace_all(normalized, "[^a-z0-9]+", " ")
+      result <- str_squish(normalized)
+      ifelse(result == "", "", result)
+    },
+    character(1),
+    USE.NAMES = FALSE
+  )
 }
 
 group_blocks_by_edges <- function(total_blocks, edges_df) {
