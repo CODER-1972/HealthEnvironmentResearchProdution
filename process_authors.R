@@ -351,9 +351,6 @@ author_counts <- author_rows %>%
 author_rows <- author_rows %>%
   left_join(author_counts, by = "RowID")
 
-author_frequency <- author_rows %>%
-  count(Autor, name = "Frequencia")
-
 orcid_col <- find_column(
   data,
   c(
@@ -464,56 +461,96 @@ if (nrow(affiliation_unspecified) > 0) {
 authors_combined <- authors_with_orcid %>%
   left_join(affiliation_combined, by = c("RowID", "AutorKey"))
 
-result <- authors_combined %>%
+author_summary <- authors_combined %>%
   group_by(Autor) %>%
   summarise(
+    Ordem = suppressWarnings(min(RowID, na.rm = TRUE)),
     ORCID = combine_orcid(ORCID),
     Instituicoes = split_affiliations(Affiliation),
     .groups = "drop"
   ) %>%
   mutate(
     ORCID = replace_na(ORCID, ""),
-    Instituicoes = replace_na(Instituicoes, "")
+    Instituicoes = replace_na(Instituicoes, ""),
+    Ordem = ifelse(is.infinite(Ordem), NA_real_, Ordem)
   ) %>%
-  arrange(Autor)
+  arrange(Ordem, Autor)
+
+author_summary <- author_summary %>%
+  mutate(OrderIndex = row_number())
+author_summary <- author_summary %>%
+  mutate(Ordem = if_else(is.na(Ordem), as.numeric(OrderIndex), Ordem))
 
 if (nrow(orcid_orphans) > 0) {
+  max_ordem <- if (nrow(author_summary) == 0) 0 else max(author_summary$Ordem, na.rm = TRUE)
+  max_index <- if (nrow(author_summary) == 0) 0 else max(author_summary$OrderIndex, na.rm = TRUE)
   orphan_rows <- orcid_orphans %>%
     mutate(
       Autor = "",
-      Instituicoes = ""
+      Instituicoes = "",
+      Ordem = max_ordem + seq_len(n()),
+      OrderIndex = max_index + seq_len(n())
     ) %>%
-    select(Autor, ORCID, Instituicoes)
-  result <- bind_rows(result, orphan_rows) %>%
-    arrange(Autor, ORCID)
+    select(Autor, ORCID, Instituicoes, Ordem, OrderIndex)
+  author_summary <- bind_rows(author_summary, orphan_rows)
 }
 
-author_institutions <- result %>%
-  mutate(Autor = replace_na(Autor, "")) %>%
-  group_by(Autor) %>%
-  summarise(InstituicoesAutor = first(Instituicoes), .groups = "drop")
+author_summary <- author_summary %>%
+  arrange(OrderIndex)
 
-orcid_groups <- result %>%
-  mutate(Autor = replace_na(Autor, "")) %>%
-  filter(ORCID != "") %>%
-  mutate(ORCID = str_split(ORCID, "\\s*;\\s*")) %>%
-  unnest(ORCID) %>%
+result <- author_summary %>%
+  select(Autor, ORCID, Instituicoes)
+
+author_rows_for_groups <- author_summary %>%
+  filter(Autor != "") %>%
   mutate(
-    ORCID = str_trim(ORCID),
-    Autor = str_trim(Autor)
-  ) %>%
-  filter(ORCID != "") %>%
-  left_join(author_frequency, by = "Autor") %>%
-  mutate(Frequencia = replace_na(Frequencia, 0L)) %>%
-  left_join(author_institutions, by = "Autor") %>%
-  group_by(ORCID) %>%
-  arrange(desc(Frequencia), Autor, .by_group = TRUE) %>%
-  summarise(
-    Autores = paste(Autor, collapse = "; "),
-    ORCIDs = paste(ORCID, collapse = "; "),
-    Instituicoes = paste(replace_na(InstituicoesAutor, ""), collapse = "; "),
-    .groups = "drop"
+    ORCIDTokens = map(
+      ORCID,
+      ~ {
+        if (is.null(.x) || .x == "") {
+          character()
+        } else {
+          tokens <- str_split(.x, "\\s*;\\s*")[[1]]
+          tokens <- str_trim(tokens)
+          tokens[tokens != ""]
+        }
+      }
+    )
   )
+
+without_orcid <- author_rows_for_groups %>%
+  filter(map_int(ORCIDTokens, length) == 0) %>%
+  transmute(
+    Ordem = OrderIndex,
+    Autores = Autor,
+    ORCIDs = "",
+    Instituicoes = Instituicoes
+  )
+
+with_orcid <- author_rows_for_groups %>%
+  filter(map_int(ORCIDTokens, length) > 0) %>%
+  mutate(ORCIDTokens = map(ORCIDTokens, unique)) %>%
+  unnest_longer(ORCIDTokens, values_to = "SingleORCID")
+
+grouped_orcid <- with_orcid %>%
+  group_by(SingleORCID) %>%
+  arrange(OrderIndex, .by_group = TRUE) %>%
+  summarise(
+    Ordem = min(OrderIndex),
+    Autores = paste(Autor, collapse = "; "),
+    ORCIDs = paste(SingleORCID, collapse = "; "),
+    Instituicoes = paste(Instituicoes, collapse = "; "),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    Autores = str_trim(Autores),
+    ORCIDs = str_trim(ORCIDs),
+    Instituicoes = str_trim(Instituicoes)
+  )
+
+orcid_groups <- bind_rows(grouped_orcid, without_orcid) %>%
+  arrange(Ordem, Autores) %>%
+  select(Autores, ORCIDs, Instituicoes)
 
 if (nrow(orcid_groups) == 0) {
   orcid_groups <- tibble(

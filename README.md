@@ -11,9 +11,9 @@ a partir de ficheiros Excel exportados do Web of Science.
   instituições associadas. ORCID que existam no ficheiro mas que não possuam
   nome associado são incluídos no resultado com a coluna de autor vazia, para
   que nenhum identificador se perca. Além da folha principal com autores,
-  passa a gerar uma folha adicional que agrupa entradas que partilham o mesmo
-  ORCID, apresentando os nomes ordenados pela frequência com que surgem no
-  ficheiro de origem.
+  gera uma folha adicional que consolida entradas com o mesmo ORCID numa única
+  linha, mantendo os nomes sem ORCID e preservando a ordem em que cada autor
+  surge na folha principal.
 - `download_process_authors.R` – Auxilia a transferência do script principal
   (`process_authors.R`) para o seu ambiente de trabalho, deduzindo
   automaticamente o URL bruto do GitHub sempre que possível.
@@ -51,11 +51,14 @@ Rscript process_authors.R
 Será solicitada a pasta onde se encontra o ficheiro Excel exportado do Web of
 Science, e o script gera `autores_unicos.xlsx` com duas folhas:
 
-1. **Autores** – Lista consolidada de autores, ORCID e instituições.
-2. **ORCID Agrupados** – Entradas com o mesmo ORCID são agregadas, listando os
-   nomes correspondentes (ordenados do mais frequente para o menos frequente),
-   repetindo o identificador ORCID pela mesma ordem e alinhando as instituições
-   associadas a cada autor.
+1. **Autores** – Lista consolidada de autores, ORCID e instituições, preservando
+   nomes sem ORCID com a coluna respetiva em branco.
+2. **ORCID Agrupados** – Entradas com o mesmo ORCID são agregadas numa única
+   linha: a coluna de nomes reúne os autores separados por `;` na mesma ordem
+   em que surgem na folha principal, a coluna de ORCID repete o identificador
+   para cada autor (também separado por `;`) e a coluna de instituições alinha
+   as informações correspondentes, mantendo igualmente os autores sem ORCID na
+   sua posição original.
 
 > ℹ️ **Importante:** Em ambientes remotos (por exemplo, Posit Cloud) não é
 > possível aceder diretamente a discos locais como `C:\\Users\\...`. Carregue o
