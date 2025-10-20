@@ -525,35 +525,99 @@ without_orcid <- author_rows_for_groups %>%
     Ordem = OrderIndex,
     Autores = Autor,
     ORCIDs = "",
-    Instituicoes = Instituicoes
+    Instituicoes = replace_na(Instituicoes, "")
   )
 
 with_orcid <- author_rows_for_groups %>%
   filter(map_int(ORCIDTokens, length) > 0) %>%
-  mutate(ORCIDTokens = map(ORCIDTokens, unique)) %>%
-  unnest_longer(ORCIDTokens, values_to = "SingleORCID") %>%
-  distinct(SingleORCID, Autor, ORCIDOriginal, Instituicoes, OrderIndex)
-
-grouped_orcid <- with_orcid %>%
-  group_by(SingleORCID) %>%
-  arrange(OrderIndex, .by_group = TRUE) %>%
-  summarise(
-    Ordem = min(OrderIndex),
-    Dados = list(tibble(
-      Autor = Autor,
-      ORCID = ORCIDOriginal,
-      Instituicoes = Instituicoes,
-      OrdemAutor = OrderIndex
-    ) %>%
-      arrange(OrdemAutor)),
-    .groups = "drop"
-  ) %>%
   mutate(
-    Autores = map_chr(Dados, ~ str_squish(paste(.x$Autor, collapse = "; "))),
-    ORCIDs = map_chr(Dados, ~ str_squish(paste(.x$ORCID, collapse = "; "))),
-    Instituicoes = map_chr(Dados, ~ str_squish(paste(.x$Instituicoes, collapse = "; ")))
-  ) %>%
-  select(-Dados)
+    ORCIDTokens = map(ORCIDTokens, ~ unique(.x[!is.na(.x) & .x != ""])),
+    AutorID = row_number(),
+    Instituicoes = replace_na(Instituicoes, "")
+  )
+
+group_components_by_orcid <- function(df) {
+  if (nrow(df) == 0) {
+    return(list())
+  }
+
+  token_links <- df %>%
+    select(AutorID, ORCIDTokens) %>%
+    unnest_longer(ORCIDTokens, values_to = "Token") %>%
+    distinct(AutorID, Token)
+
+  if (nrow(token_links) == 0) {
+    return(as.list(seq_len(nrow(df))))
+  }
+
+  token_lookup <- split(token_links$AutorID, token_links$Token)
+  visited <- rep(FALSE, nrow(df))
+  components <- list()
+
+  for (i in seq_len(nrow(df))) {
+    if (visited[i]) {
+      next
+    }
+    stack <- i
+    comp_ids <- integer()
+
+    while (length(stack) > 0) {
+      current <- stack[[length(stack)]]
+      stack <- stack[-length(stack)]
+      if (visited[current]) {
+        next
+      }
+      visited[current] <- TRUE
+      comp_ids <- unique(c(comp_ids, current))
+      tokens_current <- df$ORCIDTokens[[current]]
+      if (length(tokens_current) == 0) {
+        next
+      }
+      for (token in tokens_current) {
+        linked <- token_lookup[[token]]
+        if (length(linked) == 0) {
+          next
+        }
+        stack <- unique(c(stack, setdiff(linked, comp_ids)))
+      }
+    }
+
+    components[[length(components) + 1]] <- comp_ids
+  }
+
+  components
+}
+
+component_indices <- group_components_by_orcid(with_orcid)
+
+grouped_orcid <- if (length(component_indices) == 0) {
+  tibble(
+    Ordem = numeric(),
+    Autores = character(),
+    ORCIDs = character(),
+    Instituicoes = character()
+  )
+} else {
+  map_dfr(component_indices, function(idx) {
+    comp_authors <- with_orcid %>%
+      filter(AutorID %in% idx) %>%
+      arrange(OrderIndex)
+
+    nomes <- comp_authors$Autor
+    orcid_por_autor <- map_chr(
+      comp_authors$ORCIDTokens,
+      ~ if (length(.x) == 0) "" else paste(.x, collapse = "; ")
+    )
+    instituicoes <- replace_na(comp_authors$Instituicoes, "")
+
+    tibble(
+      Ordem = suppressWarnings(min(comp_authors$OrderIndex, na.rm = TRUE)),
+      Autores = str_squish(paste(nomes, collapse = "; ")),
+      ORCIDs = str_squish(paste(orcid_por_autor, collapse = "; ")),
+      Instituicoes = str_squish(paste(instituicoes, collapse = "; "))
+    )
+  })
+}
 
 orcid_groups <- bind_rows(grouped_orcid, without_orcid) %>%
   arrange(Ordem, Autores) %>%
