@@ -418,7 +418,17 @@ if (nrow(orcid_unspecified) > 0) {
       )
     ) %>%
     select(-ORCIDLista)
-}
+  }
+
+assigned_orcids <- authors_with_orcid %>%
+  filter(!is.na(ORCID) & ORCID != "") %>%
+  distinct(RowID, ORCID)
+
+orcid_orphans <- orcid_map %>%
+  filter((is.na(AutorKey) | AutorKey == "") & !is.na(ORCID) & ORCID != "") %>%
+  distinct(RowID, ORCID) %>%
+  anti_join(assigned_orcids, by = c("RowID", "ORCID")) %>%
+  distinct(ORCID)
 
 if (is.null(affiliation_col)) {
   message("Aviso: coluna de filiação/instituições não encontrada. Será criado um campo vazio.")
@@ -463,6 +473,17 @@ result <- authors_combined %>%
     Instituicoes = replace_na(Instituicoes, "")
   ) %>%
   arrange(Autor)
+
+if (nrow(orcid_orphans) > 0) {
+  orphan_rows <- orcid_orphans %>%
+    mutate(
+      Autor = "",
+      Instituicoes = ""
+    ) %>%
+    select(Autor, ORCID, Instituicoes)
+  result <- bind_rows(result, orphan_rows) %>%
+    arrange(Autor, ORCID)
+}
 
 output_path <- file.path(folder_path, "autores_unicos.xlsx")
 write_xlsx(result, output_path)

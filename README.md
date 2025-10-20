@@ -8,7 +8,9 @@ a partir de ficheiros Excel exportados do Web of Science.
 - `process_authors.R` – Lê um ficheiro Excel do Web of Science, agrega nomes
   únicos de autores, os respetivos ORCID (quando disponíveis; múltiplos
   identificadores para o mesmo autor são apresentados separados por `;`) e as
-  instituições associadas.
+  instituições associadas. ORCID que existam no ficheiro mas que não possuam
+  nome associado são incluídos no resultado com a coluna de autor vazia, para
+  que nenhum identificador se perca.
 - `download_process_authors.R` – Auxilia a transferência do script principal
   (`process_authors.R`) para o seu ambiente de trabalho, deduzindo
   automaticamente o URL bruto do GitHub sempre que possível.
