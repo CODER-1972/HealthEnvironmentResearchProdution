@@ -315,6 +315,120 @@ split_affiliations <- function(values) {
   paste(tokens, collapse = "; ")
 }
 
+extract_surname_initial <- function(name) {
+  if (is.null(name) || length(name) == 0) {
+    return(NA_character_)
+  }
+  single <- as.character(name)[1]
+  if (is.na(single)) {
+    return(NA_character_)
+  }
+  cleaned <- strip_diacritics(single)
+  cleaned <- str_replace_all(cleaned, "\\r\\n|\\n", " ")
+  cleaned <- str_replace_all(cleaned, "\\.+", "")
+  cleaned <- str_squish(cleaned)
+  if (cleaned == "") {
+    return(NA_character_)
+  }
+  upper <- str_to_upper(cleaned)
+  if (str_detect(upper, ",")) {
+    parts <- str_split_fixed(upper, ",", 2)
+    surname <- str_squish(parts[, 1])
+    given <- str_squish(parts[, 2])
+  } else {
+    pieces <- str_split(upper, "\\s+")[[1]]
+    pieces <- pieces[pieces != ""]
+    if (length(pieces) == 0) {
+      return(NA_character_)
+    }
+    surname <- pieces[1]
+    if (length(pieces) > 1) {
+      given <- str_trim(paste(pieces[-1], collapse = " "))
+    } else {
+      given <- ""
+    }
+  }
+  if (surname == "") {
+    return(NA_character_)
+  }
+  given_parts <- str_split(given, "\\s+")[[1]]
+  given_parts <- given_parts[given_parts != ""]
+  initial <- if (length(given_parts) == 0) "" else str_sub(given_parts[1], 1, 1)
+  key <- str_trim(paste(surname, initial))
+  if (key == "") NA_character_ else key
+}
+
+collect_affiliation_tokens <- function(values) {
+  if (length(values) == 0) {
+    return(character())
+  }
+  values <- values[!is.na(values)]
+  if (length(values) == 0) {
+    return(character())
+  }
+  tokens <- values %>%
+    str_replace_all("\\r\\n|\\n", "; ") %>%
+    str_split(pattern = "[;|]\\s*") %>%
+    flatten_chr() %>%
+    str_trim()
+  tokens[tokens != ""]
+}
+
+normalize_institution_token <- function(value) {
+  if (is.null(value) || is.na(value)) {
+    return("")
+  }
+  normalized <- strip_diacritics(value)
+  normalized <- str_to_lower(normalized)
+  normalized <- str_replace_all(normalized, "[^a-z0-9]+", " ")
+  str_squish(normalized)
+}
+
+group_blocks_by_edges <- function(total_blocks, edges_df) {
+  if (total_blocks == 0) {
+    return(list())
+  }
+
+  adjacency <- vector("list", total_blocks)
+  if (nrow(edges_df) > 0) {
+    for (i in seq_len(nrow(edges_df))) {
+      from <- edges_df$From[[i]]
+      to <- edges_df$To[[i]]
+      adjacency[[from]] <- unique(c(adjacency[[from]], to))
+      adjacency[[to]] <- unique(c(adjacency[[to]], from))
+    }
+  }
+
+  visited <- rep(FALSE, total_blocks)
+  components <- list()
+
+  for (i in seq_len(total_blocks)) {
+    if (visited[i]) {
+      next
+    }
+    stack <- i
+    component <- integer()
+
+    while (length(stack) > 0) {
+      current <- stack[[length(stack)]]
+      stack <- stack[-length(stack)]
+      if (visited[current]) {
+        next
+      }
+      visited[current] <- TRUE
+      component <- unique(c(component, current))
+      neighbours <- adjacency[[current]]
+      if (length(neighbours) > 0) {
+        stack <- unique(c(stack, setdiff(neighbours, component)))
+      }
+    }
+
+    components[[length(components) + 1]] <- sort(component)
+  }
+
+  components
+}
+
 full_name_col <- find_column(
   data,
   c(
@@ -526,11 +640,24 @@ author_rows_for_groups <- author_summary %>%
 
 without_orcid <- author_rows_for_groups %>%
   filter(map_int(ORCIDTokens, length) == 0) %>%
+  mutate(
+    Instituicoes = replace_na(Instituicoes, ""),
+    Detalhes = map2(
+      Autor,
+      Instituicoes,
+      ~ tibble(
+        Autor = .x,
+        ORCIDTokens = list(character()),
+        Instituicoes = .y
+      )
+    )
+  ) %>%
   transmute(
     Ordem = OrderIndex,
     Autores = Autor,
     ORCIDs = "",
-    Instituicoes = replace_na(Instituicoes, "")
+    Instituicoes = Instituicoes,
+    Detalhes = Detalhes
   )
 
 with_orcid <- author_rows_for_groups %>%
@@ -600,7 +727,8 @@ grouped_orcid <- if (length(component_indices) == 0) {
     Ordem = numeric(),
     Autores = character(),
     ORCIDs = character(),
-    Instituicoes = character()
+    Instituicoes = character(),
+    Detalhes = list()
   )
 } else {
   map_dfr(component_indices, function(idx) {
@@ -619,17 +747,175 @@ grouped_orcid <- if (length(component_indices) == 0) {
       Ordem = suppressWarnings(min(comp_authors$OrderIndex, na.rm = TRUE)),
       Autores = str_squish(paste(nomes, collapse = "; ")),
       ORCIDs = str_squish(paste(orcid_por_autor, collapse = "; ")),
-      Instituicoes = str_squish(paste(instituicoes, collapse = "; "))
+      Instituicoes = str_squish(paste(instituicoes, collapse = "; ")),
+      Detalhes = list(
+        tibble(
+          Autor = nomes,
+          ORCIDTokens = comp_authors$ORCIDTokens,
+          Instituicoes = instituicoes
+        )
+      )
     )
   })
 }
 
-orcid_groups <- bind_rows(grouped_orcid, without_orcid) %>%
+orcid_groups_enriched <- bind_rows(grouped_orcid, without_orcid) %>%
   mutate(
     PrimeiroAutor = str_trim(coalesce(str_split_fixed(Autores, ";", 2)[, 1], ""))
   ) %>%
   arrange(PrimeiroAutor == "", PrimeiroAutor, Autores) %>%
+  select(-PrimeiroAutor)
+
+orcid_groups <- orcid_groups_enriched %>%
   select(Autores, ORCIDs, Instituicoes)
+
+blocks <- orcid_groups_enriched %>%
+  mutate(
+    BlockID = row_number(),
+    Detalhes = map(Detalhes, function(tbl) {
+      if (is.null(tbl) || nrow(tbl) == 0) {
+        tibble(
+          Autor = character(),
+          ORCIDTokens = list(),
+          Instituicoes = character(),
+          AutorIndex = integer()
+        )
+      } else {
+        tbl %>%
+          mutate(
+            ORCIDTokens = map(ORCIDTokens, function(tokens) {
+              if (is.null(tokens) || length(tokens) == 0) {
+                character()
+              } else {
+                values <- as.character(tokens)
+                values <- values[!is.na(values) & values != ""]
+                unique(values)
+              }
+            }),
+            Instituicoes = replace_na(Instituicoes, ""),
+            AutorIndex = seq_len(n())
+          )
+      }
+    })
+  )
+
+block_author_details <- blocks %>%
+  select(BlockID, Detalhes) %>%
+  unnest(Detalhes)
+
+if (nrow(block_author_details) == 0) {
+  block_author_details <- tibble(
+    BlockID = integer(),
+    Autor = character(),
+    ORCIDTokens = list(),
+    Instituicoes = character(),
+    AutorIndex = integer()
+  )
+}
+
+block_author_details <- block_author_details %>%
+  mutate(
+    SurnameInitial = map_chr(Autor, extract_surname_initial),
+    InstituicaoTokens = map(Instituicoes, collect_affiliation_tokens)
+  )
+
+author_similarity_tokens <- block_author_details %>%
+  filter(!is.na(SurnameInitial) & SurnameInitial != "") %>%
+  mutate(InstituicaoTokens = map(InstituicaoTokens, ~ unique(.x))) %>%
+  filter(map_int(InstituicaoTokens, length) > 0) %>%
+  unnest(InstituicaoTokens, values_to = "InstituicaoToken") %>%
+  mutate(
+    InstituicaoKey = normalize_institution_token(InstituicaoToken)
+  ) %>%
+  filter(InstituicaoKey != "") %>%
+  distinct(BlockID, SurnameInitial, InstituicaoKey)
+
+similarity_edges <- if (nrow(author_similarity_tokens) == 0) {
+  tibble(From = integer(), To = integer())
+} else {
+  author_similarity_tokens %>%
+    inner_join(author_similarity_tokens, by = c("SurnameInitial", "InstituicaoKey"), suffix = c("_1", "_2")) %>%
+    filter(BlockID_1 < BlockID_2) %>%
+    transmute(From = BlockID_1, To = BlockID_2) %>%
+    distinct()
+}
+
+components_blocks <- group_blocks_by_edges(nrow(blocks), similarity_edges)
+
+surname_initial_groups <- map_dfr(components_blocks, function(component_ids) {
+  if (length(component_ids) == 0) {
+    return(tibble(Ordem = numeric(), Autores = character(), ORCIDs = character(), Instituicoes = character()))
+  }
+
+  component_blocks <- blocks %>%
+    filter(BlockID %in% component_ids) %>%
+    arrange(BlockID)
+
+  component_details <- block_author_details %>%
+    filter(BlockID %in% component_ids) %>%
+    arrange(BlockID, AutorIndex) %>%
+    mutate(
+      ORCIDTokens = map(ORCIDTokens, ~ {
+        if (is.null(.x) || length(.x) == 0) {
+          character()
+        } else {
+          .x
+        }
+      }),
+      Instituicoes = replace_na(Instituicoes, "")
+    )
+
+  if (nrow(component_details) == 0) {
+    return(tibble(Ordem = min(component_blocks$BlockID), Autores = "", ORCIDs = "", Instituicoes = ""))
+  }
+
+  author_order <- component_details %>%
+    distinct(Autor, .keep_all = TRUE) %>%
+    mutate(AutorOrder = row_number()) %>%
+    select(Autor, AutorOrder)
+
+  author_summary_component <- component_details %>%
+    group_by(Autor) %>%
+    summarise(
+      ORCIDValue = {
+        tokens <- flatten_chr(ORCIDTokens)
+        combined <- combine_orcid(tokens)
+        ifelse(is.na(combined), "", combined)
+      },
+      InstituicoesValue = {
+        combined_inst <- split_affiliations(Instituicoes)
+        ifelse(is.na(combined_inst), "", combined_inst)
+      },
+      .groups = "drop"
+    )
+
+  author_output <- author_order %>%
+    left_join(author_summary_component, by = "Autor") %>%
+    mutate(
+      ORCIDValue = coalesce(ORCIDValue, ""),
+      InstituicoesValue = coalesce(InstituicoesValue, "")
+    ) %>%
+    arrange(AutorOrder)
+
+  tibble(
+    Ordem = min(component_blocks$BlockID),
+    Autores = str_squish(paste(author_output$Autor, collapse = "; ")),
+    ORCIDs = str_squish(paste(author_output$ORCIDValue, collapse = "; ")),
+    Instituicoes = str_squish(paste(author_output$InstituicoesValue, collapse = "; "))
+  )
+})
+
+if (nrow(surname_initial_groups) == 0) {
+  surname_initial_groups <- tibble(
+    Autores = character(),
+    ORCIDs = character(),
+    Instituicoes = character()
+  )
+} else {
+  surname_initial_groups <- surname_initial_groups %>%
+    arrange(Ordem) %>%
+    select(Autores, ORCIDs, Instituicoes)
+}
 
 if (nrow(orcid_groups) == 0) {
   orcid_groups <- tibble(
@@ -643,7 +929,8 @@ output_path <- file.path(folder_path, "autores_unicos.xlsx")
 write_xlsx(
   list(
     "Autores" = result,
-    "ORCID Agrupados" = orcid_groups
+    "ORCID Agrupados" = orcid_groups,
+    "Apelido Inicial Agrupados" = surname_initial_groups
   ),
   output_path
 )

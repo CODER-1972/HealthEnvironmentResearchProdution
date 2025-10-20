@@ -49,7 +49,7 @@ Rscript process_authors.R
 ```
 
 Será solicitada a pasta onde se encontra o ficheiro Excel exportado do Web of
-Science, e o script gera `autores_unicos.xlsx` com duas folhas:
+Science, e o script gera `autores_unicos.xlsx` com três folhas:
 
 1. **Autores** – Lista consolidada de autores, ORCID e instituições, preservando
    nomes sem ORCID com a coluna respetiva em branco e ordenando
@@ -62,6 +62,12 @@ Science, e o script gera `autores_unicos.xlsx` com duas folhas:
    informações correspondentes, mantendo igualmente os autores sem ORCID na sua
    posição original. Esta folha é igualmente ordenada alfabeticamente pelo
    primeiro nome listado (entradas sem nome surgem no final).
+3. **Apelido Inicial Agrupados** – Reaproveita os blocos da segunda folha e
+   agrupa num único registo os autores que partilham o mesmo apelido e inicial
+   (com base no primeiro nome) e que têm pelo menos uma instituição em comum.
+   As listas de nomes, ORCID e instituições resultantes mantêm os blocos já
+   existentes e são apresentadas separadas por `;`, seguindo a ordem em que os
+   autores surgem na segunda folha.
 
 > ℹ️ **Importante:** Em ambientes remotos (por exemplo, Posit Cloud) não é
 > possível aceder diretamente a discos locais como `C:\\Users\\...`. Carregue o
