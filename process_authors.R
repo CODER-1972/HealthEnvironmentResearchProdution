@@ -504,6 +504,7 @@ result <- author_summary %>%
 author_rows_for_groups <- author_summary %>%
   filter(Autor != "") %>%
   mutate(
+    ORCIDOriginal = ORCID,
     ORCIDTokens = map(
       ORCID,
       ~ {
@@ -530,23 +531,29 @@ without_orcid <- author_rows_for_groups %>%
 with_orcid <- author_rows_for_groups %>%
   filter(map_int(ORCIDTokens, length) > 0) %>%
   mutate(ORCIDTokens = map(ORCIDTokens, unique)) %>%
-  unnest_longer(ORCIDTokens, values_to = "SingleORCID")
+  unnest_longer(ORCIDTokens, values_to = "SingleORCID") %>%
+  distinct(SingleORCID, Autor, ORCIDOriginal, Instituicoes, OrderIndex)
 
 grouped_orcid <- with_orcid %>%
   group_by(SingleORCID) %>%
   arrange(OrderIndex, .by_group = TRUE) %>%
   summarise(
     Ordem = min(OrderIndex),
-    Autores = paste(Autor, collapse = "; "),
-    ORCIDs = paste(SingleORCID, collapse = "; "),
-    Instituicoes = paste(Instituicoes, collapse = "; "),
+    Dados = list(tibble(
+      Autor = Autor,
+      ORCID = ORCIDOriginal,
+      Instituicoes = Instituicoes,
+      OrdemAutor = OrderIndex
+    ) %>%
+      arrange(OrdemAutor)),
     .groups = "drop"
   ) %>%
   mutate(
-    Autores = str_trim(Autores),
-    ORCIDs = str_trim(ORCIDs),
-    Instituicoes = str_trim(Instituicoes)
-  )
+    Autores = map_chr(Dados, ~ str_squish(paste(.x$Autor, collapse = "; "))),
+    ORCIDs = map_chr(Dados, ~ str_squish(paste(.x$ORCID, collapse = "; "))),
+    Instituicoes = map_chr(Dados, ~ str_squish(paste(.x$Instituicoes, collapse = "; ")))
+  ) %>%
+  select(-Dados)
 
 orcid_groups <- bind_rows(grouped_orcid, without_orcid) %>%
   arrange(Ordem, Autores) %>%
