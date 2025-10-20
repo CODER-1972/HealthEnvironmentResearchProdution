@@ -351,6 +351,9 @@ author_counts <- author_rows %>%
 author_rows <- author_rows %>%
   left_join(author_counts, by = "RowID")
 
+author_frequency <- author_rows %>%
+  count(Autor, name = "Frequencia")
+
 orcid_col <- find_column(
   data,
   c(
@@ -485,7 +488,48 @@ if (nrow(orcid_orphans) > 0) {
     arrange(Autor, ORCID)
 }
 
+author_institutions <- result %>%
+  mutate(Autor = replace_na(Autor, "")) %>%
+  group_by(Autor) %>%
+  summarise(InstituicoesAutor = first(Instituicoes), .groups = "drop")
+
+orcid_groups <- result %>%
+  mutate(Autor = replace_na(Autor, "")) %>%
+  filter(ORCID != "") %>%
+  mutate(ORCID = str_split(ORCID, "\\s*;\\s*")) %>%
+  unnest(ORCID) %>%
+  mutate(
+    ORCID = str_trim(ORCID),
+    Autor = str_trim(Autor)
+  ) %>%
+  filter(ORCID != "") %>%
+  left_join(author_frequency, by = "Autor") %>%
+  mutate(Frequencia = replace_na(Frequencia, 0L)) %>%
+  left_join(author_institutions, by = "Autor") %>%
+  group_by(ORCID) %>%
+  arrange(desc(Frequencia), Autor, .by_group = TRUE) %>%
+  summarise(
+    Autores = paste(Autor, collapse = "; "),
+    ORCIDs = paste(ORCID, collapse = "; "),
+    Instituicoes = paste(replace_na(InstituicoesAutor, ""), collapse = "; "),
+    .groups = "drop"
+  )
+
+if (nrow(orcid_groups) == 0) {
+  orcid_groups <- tibble(
+    Autores = character(),
+    ORCIDs = character(),
+    Instituicoes = character()
+  )
+}
+
 output_path <- file.path(folder_path, "autores_unicos.xlsx")
-write_xlsx(result, output_path)
+write_xlsx(
+  list(
+    "Autores" = result,
+    "ORCID Agrupados" = orcid_groups
+  ),
+  output_path
+)
 
 message("Ficheiro criado: ", output_path)

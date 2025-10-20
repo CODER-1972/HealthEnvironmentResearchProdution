@@ -10,7 +10,10 @@ a partir de ficheiros Excel exportados do Web of Science.
   identificadores para o mesmo autor são apresentados separados por `;`) e as
   instituições associadas. ORCID que existam no ficheiro mas que não possuam
   nome associado são incluídos no resultado com a coluna de autor vazia, para
-  que nenhum identificador se perca.
+  que nenhum identificador se perca. Além da folha principal com autores,
+  passa a gerar uma folha adicional que agrupa entradas que partilham o mesmo
+  ORCID, apresentando os nomes ordenados pela frequência com que surgem no
+  ficheiro de origem.
 - `download_process_authors.R` – Auxilia a transferência do script principal
   (`process_authors.R`) para o seu ambiente de trabalho, deduzindo
   automaticamente o URL bruto do GitHub sempre que possível.
@@ -46,7 +49,13 @@ Rscript process_authors.R
 ```
 
 Será solicitada a pasta onde se encontra o ficheiro Excel exportado do Web of
-Science, e o script gera `autores_unicos.xlsx` com a informação consolidada.
+Science, e o script gera `autores_unicos.xlsx` com duas folhas:
+
+1. **Autores** – Lista consolidada de autores, ORCID e instituições.
+2. **ORCID Agrupados** – Entradas com o mesmo ORCID são agregadas, listando os
+   nomes correspondentes (ordenados do mais frequente para o menos frequente),
+   repetindo o identificador ORCID pela mesma ordem e alinhando as instituições
+   associadas a cada autor.
 
 > ℹ️ **Importante:** Em ambientes remotos (por exemplo, Posit Cloud) não é
 > possível aceder diretamente a discos locais como `C:\\Users\\...`. Carregue o
