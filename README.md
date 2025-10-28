@@ -55,12 +55,8 @@ Durante a execução é apresentado um contador por registo no formato
 `[Registo atual/Total] Tempo decorrido: HH:MM:SS | Tempo restante estimado:
 HH:MM:SS | Conclusão estimada às AAAA-MM-DD HH:MM:SS`, permitindo acompanhar
 cada linha do ficheiro, a previsão de término e o horário aproximado de
-conclusão do processamento. Para complementar, cada grande fase do fluxo é
-anunciada com mensagens do tipo `[Passo X/Y] A iniciar "Descrição" | Duração
-estimada deste passo: HH:MM:SS`, seguidas de um resumo quando o passo termina,
-indicando quanto tempo levou e quantos passos totais já foram concluídos. No
-final, o script apresenta quer o tempo total gasto para processar todos os
-registos quer um resumo global dos passos executados.
+conclusão do processamento. No final, o script indica também o tempo total
+gasto para processar todos os registos.
 
 1. **Autores** – Lista consolidada de autores, ORCID e instituições, preservando
    nomes sem ORCID com a coluna respetiva em branco e ordenando
