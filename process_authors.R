@@ -1277,55 +1277,57 @@ with_step("Construir agrupamento por ORCID", {
     )
 
   group_components_by_orcid <- function(df) {
-  if (nrow(df) == 0) {
-    return(list())
-  }
-
-  token_links <- df %>%
-    select(AutorID, ORCIDTokens) %>%
-    unnest_longer(ORCIDTokens, values_to = "Token") %>%
-    distinct(AutorID, Token)
-
-  if (nrow(token_links) == 0) {
-    return(as.list(seq_len(nrow(df))))
-  }
-
-  token_lookup <- split(token_links$AutorID, token_links$Token)
-  visited <- rep(FALSE, nrow(df))
-  components <- list()
-
-  for (i in seq_len(nrow(df))) {
-    if (visited[i]) {
-      next
+    if (nrow(df) == 0) {
+      return(list())
     }
-    stack <- i
-    comp_ids <- integer()
 
-    while (length(stack) > 0) {
-      current <- stack[[length(stack)]]
-      stack <- stack[-length(stack)]
-      if (visited[current]) {
+    token_links <- df %>%
+      select(AutorID, ORCIDTokens) %>%
+      unnest_longer(ORCIDTokens, values_to = "Token") %>%
+      distinct(AutorID, Token)
+
+    if (nrow(token_links) == 0) {
+      return(as.list(seq_len(nrow(df))))
+    }
+
+    token_lookup <- split(token_links$AutorID, token_links$Token)
+    visited <- rep(FALSE, nrow(df))
+    components <- list()
+
+    for (i in seq_len(nrow(df))) {
+      if (visited[i]) {
         next
       }
-      visited[current] <- TRUE
-      comp_ids <- unique(c(comp_ids, current))
-      tokens_current <- df$ORCIDTokens[[current]]
-      if (length(tokens_current) == 0) {
-        next
-      }
-      for (token in tokens_current) {
-        linked <- token_lookup[[token]]
-        if (length(linked) == 0) {
+      stack <- i
+      comp_ids <- integer()
+
+      while (length(stack) > 0) {
+        current <- stack[[length(stack)]]
+        stack <- stack[-length(stack)]
+        if (visited[current]) {
           next
         }
-        stack <- unique(c(stack, setdiff(linked, comp_ids)))
+        visited[current] <- TRUE
+        comp_ids <- unique(c(comp_ids, current))
+        tokens_current <- df$ORCIDTokens[[current]]
+        if (length(tokens_current) == 0) {
+          next
+        }
+        for (token in tokens_current) {
+          linked <- token_lookup[[token]]
+          if (length(linked) == 0) {
+            next
+          }
+          stack <- unique(c(stack, setdiff(linked, comp_ids)))
+        }
       }
+
+      components[[length(components) + 1]] <- comp_ids
     }
 
-    components[[length(components) + 1]] <- comp_ids
+    components
   }
 
-  components
   component_indices <- group_components_by_orcid(with_orcid)
 
   grouped_orcid <- if (length(component_indices) == 0) {
