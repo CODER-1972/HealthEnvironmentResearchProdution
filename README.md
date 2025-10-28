@@ -70,11 +70,20 @@ Science, e o script gera `autores_unicos.xlsx` com três folhas:
    autores surgem na segunda folha. A identificação de instituições em comum
    utiliza normalização avançada para reduzir diferenças ortográficas e de
    abreviações (por exemplo, "Univ Tros Montes & Alto Douro" e "Univ Tras Os
-   Montes & Alto Douro" são considerados equivalentes). A heurística também
-   combina variações frequentes como "Vila Real"/"Villa Real", funde palavras
-   compostas recorrentes (por exemplo, "Tras os Montes") e harmoniza abreviaturas
-   como "Agro Environ"/"Agroenviron" ou "Dept"/"Department" para aumentar a
-   deteção de instituições partilhadas.
+   Montes & Alto Douro" são considerados equivalentes). Além da normalização,
+   aplica-se um agrupamento por similaridade que compara as assinaturas das
+   instituições através de medidas conjuntas de *Jaccard* (sobre os termos
+   presentes) e distância de Levenshtein relativa, garantindo que variantes que
+   apenas diferem em códigos postais, ordem dos termos ou abreviaturas são
+   reunidas automaticamente. Antes de calcular a similaridade, são filtrados
+   termos claramente relacionados com moradas (códigos postais, números de
+   porta, nomes de cidades ou países comuns), assim como abreviações de duas
+   letras que apenas introduzem ruído, reforçando a aproximação de entradas que
+   partilham o núcleo institucional. A heurística também combina variações
+   frequentes como "Vila Real"/"Villa Real", funde palavras compostas
+   recorrentes (por exemplo, "Tras os Montes") e harmoniza abreviaturas como
+   "Agro Environ"/"Agroenviron" ou "Dept"/"Department" para aumentar a deteção
+   de instituições partilhadas.
 
 > ℹ️ **Importante:** Em ambientes remotos (por exemplo, Posit Cloud) não é
 > possível aceder diretamente a discos locais como `C:\\Users\\...`. Carregue o

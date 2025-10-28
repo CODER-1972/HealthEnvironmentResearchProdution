@@ -389,7 +389,11 @@ normalize_institution_token <- function(value) {
   stopwords <- c(
     "de", "da", "do", "das", "dos", "os", "as", "e", "and", "the", "of",
     "del", "della", "di", "du", "des", "el", "la", "le", "los",
-    "las", "en", "y", "a", "an"
+    "las", "en", "y", "a", "an",
+    "portugal", "germany", "spain", "italy", "france", "europe", "portuguese",
+    "german", "spanish", "italian", "french", "avenue", "street", "road",
+    "campus", "building", "city", "town", "ulmenliet", "aveiro", "faro",
+    "hamburg", "lisbon", "porto"
   )
 
   normalize_word <- function(word) {
@@ -399,10 +403,6 @@ normalize_institution_token <- function(value) {
 
     if (word %in% stopwords) {
       return("")
-    }
-
-    if (str_detect(word, "^[0-9]+$")) {
-      return(word)
     }
 
     canonical <- word
@@ -426,6 +426,14 @@ normalize_institution_token <- function(value) {
     canonical <- str_replace(canonical, "^(citab)$", "citab")
 
     canonical <- str_replace_all(canonical, "(.)\\1+", "\\1")
+
+    if (str_detect(canonical, "[0-9]")) {
+      return("")
+    }
+
+    if (nchar(canonical) <= 2) {
+      return("")
+    }
 
     if (nchar(canonical) >= 3) {
       consonant_signature <- str_replace_all(canonical, "[aeiou]", "")
@@ -477,6 +485,96 @@ normalize_institution_token <- function(value) {
     },
     character(1),
     USE.NAMES = FALSE
+  )
+}
+
+institution_similarity_score <- function(a, b) {
+  if (length(a) == 0 || length(b) == 0) {
+    return(0)
+  }
+
+  if (a == "" || b == "") {
+    return(0)
+  }
+
+  tokens_a <- unique(str_split(a, "\\s+")[[1]])
+  tokens_b <- unique(str_split(b, "\\s+")[[1]])
+
+  tokens_a <- tokens_a[tokens_a != ""]
+  tokens_b <- tokens_b[tokens_b != ""]
+
+  filtered_a <- tokens_a[!str_detect(tokens_a, "[0-9]") & nchar(tokens_a) > 2]
+  filtered_b <- tokens_b[!str_detect(tokens_b, "[0-9]") & nchar(tokens_b) > 2]
+
+  calc_jaccard <- function(x, y) {
+    if (length(x) == 0 || length(y) == 0) {
+      return(0)
+    }
+    intersection <- length(intersect(x, y))
+    union <- length(union(x, y))
+    if (union == 0) 0 else intersection / union
+  }
+
+  jaccard_full <- calc_jaccard(tokens_a, tokens_b)
+  jaccard_filtered <- calc_jaccard(filtered_a, filtered_b)
+  jaccard <- max(jaccard_full, jaccard_filtered)
+
+  max_len <- max(nchar(a), nchar(b), 1)
+  distance <- adist(a, b)
+  char_similarity <- 1 - (distance / max_len)
+
+  max(jaccard, char_similarity)
+}
+
+cluster_institution_keys <- function(keys, threshold = 0.65) {
+  keys <- unique(keys[keys != ""])
+  if (length(keys) <= 1) {
+    return(tibble(InstituicaoKey = keys, ClusterKey = keys))
+  }
+
+  n <- length(keys)
+  parent <- seq_len(n)
+
+  find_parent <- function(x) {
+    while (parent[[x]] != x) {
+      parent[[x]] <<- parent[[parent[[x]]]]
+      x <- parent[[x]]
+    }
+    x
+  }
+
+  union_parent <- function(x, y) {
+    root_x <- find_parent(x)
+    root_y <- find_parent(y)
+    if (root_x == root_y) {
+      return()
+    }
+    parent[[root_y]] <<- root_x
+  }
+
+  for (i in seq_len(n - 1)) {
+    for (j in seq((i + 1), n)) {
+      score <- institution_similarity_score(keys[[i]], keys[[j]])
+      if (!is.na(score) && score >= threshold) {
+        union_parent(i, j)
+      }
+    }
+  }
+
+  groups <- vapply(seq_len(n), find_parent, integer(1))
+  representative <- vapply(
+    split(seq_len(n), groups),
+    function(idx) {
+      keys[idx[which.min(nchar(keys[idx]))]]
+    },
+    character(1)
+  )
+
+  cluster_lookup <- representative[as.character(groups)]
+
+  tibble(
+    InstituicaoKey = keys,
+    ClusterKey = unname(cluster_lookup)
   )
 }
 
@@ -925,6 +1023,18 @@ author_similarity_tokens <- block_author_details %>%
   ) %>%
   filter(InstituicaoKey != "") %>%
   distinct(BlockID, SurnameInitial, InstituicaoKey)
+
+if (nrow(author_similarity_tokens) > 0) {
+  institution_clusters <- cluster_institution_keys(author_similarity_tokens$InstituicaoKey)
+  author_similarity_tokens <- author_similarity_tokens %>%
+    left_join(institution_clusters, by = "InstituicaoKey") %>%
+    mutate(
+      ClusterKey = if_else(is.na(ClusterKey) | ClusterKey == "", InstituicaoKey, ClusterKey),
+      InstituicaoKey = ClusterKey
+    ) %>%
+    select(-ClusterKey) %>%
+    distinct(BlockID, SurnameInitial, InstituicaoKey)
+}
 
 similarity_edges <- if (nrow(author_similarity_tokens) == 0) {
   tibble(From = integer(), To = integer())
