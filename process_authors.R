@@ -387,7 +387,7 @@ normalize_institution_token <- function(value) {
   value[is.na(value)] <- ""
 
   stopwords <- c(
-    "de", "da", "do", "das", "dos", "e", "and", "the", "of",
+    "de", "da", "do", "das", "dos", "os", "as", "e", "and", "the", "of",
     "del", "della", "di", "du", "des", "el", "la", "le", "los",
     "las", "en", "y", "a", "an"
   )
@@ -406,32 +406,36 @@ normalize_institution_token <- function(value) {
     }
 
     canonical <- word
-    canonical <- str_replace_all(canonical, "^(univ|universidade|universita|universitat|universite|universidad)$", "university")
-    canonical <- str_replace_all(canonical, "^(dept|depto|dep|depart|departamento|departement)$", "department")
-    canonical <- str_replace_all(canonical, "^(ctr|centro|centre|cent|centres)$", "center")
-    canonical <- str_replace_all(canonical, "^(inst|institut|instituto|institution)$", "institute")
-    canonical <- str_replace_all(canonical, "^(tech|technol|technolo|tecnologia|tecnolog)$", "technology")
-    canonical <- str_replace_all(canonical, "^(sci|science|sciences)$", "science")
-    canonical <- str_replace_all(canonical, "^(res|research|recherche)$", "research")
-    canonical <- str_replace_all(canonical, "^(agro|agric|agriculture)$", "agriculture")
-    canonical <- str_replace_all(canonical, "^(environm|environment|environmental)$", "environment")
-    canonical <- str_replace_all(canonical, "^(biol|biology|biological)$", "biology")
-    canonical <- str_replace_all(canonical, "^(hlth|health)$", "health")
-    canonical <- str_replace_all(canonical, "^(sport|sports|sportiv|sporting)$", "sport")
-    canonical <- str_replace_all(canonical, "^(lab|laboratorio|laboratory)$", "laboratory")
-    canonical <- str_replace_all(canonical, "^(fac|faculdade|faculty)$", "faculty")
+    canonical <- str_replace(canonical, "^(univ|univers[a-z]+)$", "university")
+    canonical <- str_replace(canonical, "^(dept|depto|dep[a-z]*|depart[a-z]*)$", "department")
+    canonical <- str_replace(canonical, "^(ctr|cent[roes]*|centre[s]?)$", "center")
+    canonical <- str_replace(canonical, "^(inst|institu[a-z]*|institution[a-z]*)$", "institute")
+    canonical <- str_replace(canonical, "^(tech|technol[a-z]*|tecnolog[a-z]*)$", "technology")
+    canonical <- str_replace(canonical, "^(sci|science[s]?|scient[a-z]*)$", "science")
+    canonical <- str_replace(canonical, "^(res|research[a-z]*|recherche)$", "research")
+    canonical <- str_replace(canonical, "^(agro[a-z]*|agr[a-z]*|agriculture[a-z]*)$", "agriculture")
+    canonical <- str_replace(canonical, "^(environ[a-z]*|ambient[a-z]*)$", "environment")
+    canonical <- str_replace(canonical, "^(biol[a-z]*|bio[a-z]*)$", "biology")
+    canonical <- str_replace(canonical, "^(hlth|health|saude)$", "health")
+    canonical <- str_replace(canonical, "^(sport[a-z]*|desport[a-z]*)$", "sport")
+    canonical <- str_replace(canonical, "^(lab|labor[a-z]*)$", "laboratory")
+    canonical <- str_replace(canonical, "^(fac|faculd[a-z]*|facult[a-z]*)$", "faculty")
+    canonical <- str_replace(canonical, "^(vilareal|vila?real)$", "vilareal")
+    canonical <- str_replace(canonical, "^(tras|tros)$", "trasosmontes")
+    canonical <- str_replace(canonical, "^(altodouro|alto)$", "altodouro")
+    canonical <- str_replace(canonical, "^(citab)$", "citab")
 
-    if (nchar(canonical) > 4) {
-      canonical <- str_replace(canonical, "s$", "")
+    canonical <- str_replace_all(canonical, "(.)\\1+", "\\1")
+
+    if (nchar(canonical) >= 3) {
+      consonant_signature <- str_replace_all(canonical, "[aeiou]", "")
+      if (nchar(consonant_signature) >= 2) {
+        canonical <- consonant_signature
+      }
     }
 
-    reduced <- str_replace_all(canonical, "[aeiou]", "")
-    if (nchar(reduced) >= 3) {
-      canonical <- reduced
-    }
-
-    if (nchar(canonical) > 6) {
-      canonical <- str_sub(canonical, 1, 6)
+    if (nchar(canonical) > 10) {
+      canonical <- str_sub(canonical, 1, 10)
     }
 
     canonical
@@ -440,6 +444,12 @@ normalize_institution_token <- function(value) {
   normalized <- strip_diacritics(value)
   normalized <- str_to_lower(normalized)
   normalized <- str_replace_all(normalized, "[&/@]", " ")
+  normalized <- str_replace_all(normalized, "tras\\s+os?\\s+montes", "trasosmontes")
+  normalized <- str_replace_all(normalized, "tros\\s+montes", "trasosmontes")
+  normalized <- str_replace_all(normalized, "alto\\s+douro", "altodouro")
+  normalized <- str_replace_all(normalized, "vila\\s+real", "vilareal")
+  normalized <- str_replace_all(normalized, "agro\\s+environ", "agroenviron")
+  normalized <- str_replace_all(normalized, "agroenvironm", "agroenviron")
   normalized <- str_replace_all(normalized, "[^a-z0-9]+", " ")
   normalized <- str_squish(normalized)
 
