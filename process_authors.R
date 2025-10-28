@@ -20,6 +20,37 @@ for (pkg in required_packages) {
 }
 
 cat("=== Processamento de autores (Web of Science) ===\n")
+
+progress_steps <- c(
+  "Extrair autores do ficheiro",
+  "Associar ORCID aos autores",
+  "Associar instituições aos autores",
+  "Preparar folha principal",
+  "Preparar folha agrupada por ORCID",
+  "Preparar folha agrupada por apelido/inicial",
+  "Exportar ficheiro final"
+)
+
+progress_state <- new.env(parent = emptyenv())
+progress_state$current <- 0L
+progress_state$total <- length(progress_steps)
+
+advance_progress <- function(step_label = NULL) {
+  progress_state$current <- progress_state$current + 1L
+  label <- if (is.null(step_label) || step_label == "") {
+    if (progress_state$current <= length(progress_steps)) {
+      progress_steps[[progress_state$current]]
+    } else {
+      "Passo concluído"
+    }
+  } else {
+    step_label
+  }
+  cat(sprintf("[Passo %d/%d] %s\n", progress_state$current, progress_state$total, label))
+  flush.console()
+}
+
+cat(sprintf("Total de passos planeados: %d\n", progress_state$total))
 folder_path <- readline(prompt = "Introduza o caminho completo da pasta que contém o ficheiro Excel: ")
 folder_path <- str_trim(folder_path)
 if (str_starts(folder_path, "\"") && str_ends(folder_path, "\"")) {
@@ -653,6 +684,8 @@ if (nrow(author_rows) == 0) {
   stop("Não foram encontrados autores no ficheiro fornecido.")
 }
 
+advance_progress("Extrair autores do ficheiro")
+
 author_counts <- author_rows %>%
   count(RowID, name = "AutorCount")
 
@@ -738,6 +771,8 @@ orcid_orphans <- orcid_map %>%
   anti_join(assigned_orcids, by = c("RowID", "ORCID")) %>%
   distinct(ORCID)
 
+advance_progress("Associar ORCID aos autores")
+
 if (is.null(affiliation_col)) {
   message("Aviso: coluna de filiação/instituições não encontrada. Será criado um campo vazio.")
   affiliation_map <- tibble(RowID = integer(), AutorKey = character(), Affiliation = character())
@@ -768,6 +803,8 @@ if (nrow(affiliation_unspecified) > 0) {
 
 authors_combined <- authors_with_orcid %>%
   left_join(affiliation_combined, by = c("RowID", "AutorKey"))
+
+advance_progress("Associar instituições aos autores")
 
 author_summary <- authors_combined %>%
   group_by(Autor) %>%
@@ -813,6 +850,8 @@ result <- author_summary %>%
   ) %>%
   arrange(AutorOrdenacao == "", AutorOrdenacao) %>%
   select(-AutorOrdenacao)
+
+advance_progress("Preparar folha principal")
 
 author_rows_for_groups <- author_summary %>%
   filter(Autor != "") %>%
@@ -962,6 +1001,8 @@ orcid_groups_enriched <- bind_rows(grouped_orcid, without_orcid) %>%
 
 orcid_groups <- orcid_groups_enriched %>%
   select(Autores, ORCIDs, Instituicoes)
+
+advance_progress("Preparar folha agrupada por ORCID")
 
 blocks <- orcid_groups_enriched %>%
   mutate(
@@ -1123,6 +1164,8 @@ if (nrow(surname_initial_groups) == 0) {
     select(Autores, ORCIDs, Instituicoes)
 }
 
+advance_progress("Preparar folha agrupada por apelido/inicial")
+
 if (nrow(orcid_groups) == 0) {
   orcid_groups <- tibble(
     Autores = character(),
@@ -1140,5 +1183,7 @@ write_xlsx(
   ),
   output_path
 )
+
+advance_progress("Exportar ficheiro final")
 
 message("Ficheiro criado: ", output_path)

@@ -51,6 +51,10 @@ Rscript process_authors.R
 Será solicitada a pasta onde se encontra o ficheiro Excel exportado do Web of
 Science, e o script gera `autores_unicos.xlsx` com três folhas:
 
+Durante a execução é apresentado um contador de progresso no formato
+`[Passo atual/Total]`, indicando em que etapa do processamento o script se
+encontra.
+
 1. **Autores** – Lista consolidada de autores, ORCID e instituições, preservando
    nomes sem ORCID com a coluna respetiva em branco e ordenando
    alfabeticamente pelo nome do autor (entradas sem nome são listadas no fim).
