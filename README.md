@@ -51,9 +51,10 @@ Rscript process_authors.R
 Será solicitada a pasta onde se encontra o ficheiro Excel exportado do Web of
 Science, e o script gera `autores_unicos.xlsx` com três folhas:
 
-Durante a execução é apresentado um contador de progresso no formato
-`[Passo atual/Total]`, indicando em que etapa do processamento o script se
-encontra.
+Durante a execução é apresentado um contador por registo no formato
+`[Registo atual/Total] Tempo decorrido: HH:MM:SS | Estimativa restante:
+HH:MM:SS`, permitindo acompanhar cada linha do ficheiro e a previsão de
+conclusão do processamento.
 
 1. **Autores** – Lista consolidada de autores, ORCID e instituições, preservando
    nomes sem ORCID com a coluna respetiva em branco e ordenando
@@ -72,7 +73,8 @@ encontra.
    As listas de nomes, ORCID e instituições resultantes mantêm os blocos já
    existentes e são apresentadas separadas por `;`, seguindo a ordem em que os
    autores surgem na segunda folha. A identificação de instituições em comum
-   utiliza normalização avançada para reduzir diferenças ortográficas e de
+   utiliza normalização avançada (com limite de similaridade de 0,80) para
+   reduzir diferenças ortográficas e de
    abreviações (por exemplo, "Univ Tros Montes & Alto Douro" e "Univ Tras Os
    Montes & Alto Douro" são considerados equivalentes). Além da normalização,
    aplica-se um agrupamento por similaridade que compara as assinaturas das
@@ -88,6 +90,17 @@ encontra.
    recorrentes (por exemplo, "Tras os Montes") e harmoniza abreviaturas como
    "Agro Environ"/"Agroenviron" ou "Dept"/"Department" para aumentar a deteção
    de instituições partilhadas.
+
+Além deste ficheiro, o script gera `agrupamento_instituicoes.xlsx` com duas
+folhas dedicadas às normalizações de instituições:
+
+- **Similaridade ≥ 0,80** – reúne cada conjunto de instituições cuja
+  similaridade excede ou iguala 0,80, apresentando na coluna A o nome padrão
+  escolhido para o grupo e, na coluna B, todas as variantes originais agregadas
+  (separadas por `;`).
+- **Similaridade 0,70-0,80** – lista, em estrutura idêntica, os agrupamentos
+  adicionais encontrados apenas no intervalo de similaridade entre 0,70 e 0,80,
+  permitindo identificar casos próximos que mereçam revisão manual.
 
 > ℹ️ **Importante:** Em ambientes remotos (por exemplo, Posit Cloud) não é
 > possível aceder diretamente a discos locais como `C:\\Users\\...`. Carregue o

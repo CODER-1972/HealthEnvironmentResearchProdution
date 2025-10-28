@@ -21,36 +21,53 @@ for (pkg in required_packages) {
 
 cat("=== Processamento de autores (Web of Science) ===\n")
 
-progress_steps <- c(
-  "Extrair autores do ficheiro",
-  "Associar ORCID aos autores",
-  "Associar instituições aos autores",
-  "Preparar folha principal",
-  "Preparar folha agrupada por ORCID",
-  "Preparar folha agrupada por apelido/inicial",
-  "Exportar ficheiro final"
-)
-
-progress_state <- new.env(parent = emptyenv())
-progress_state$current <- 0L
-progress_state$total <- length(progress_steps)
-
-advance_progress <- function(step_label = NULL) {
-  progress_state$current <- progress_state$current + 1L
-  label <- if (is.null(step_label) || step_label == "") {
-    if (progress_state$current <= length(progress_steps)) {
-      progress_steps[[progress_state$current]]
-    } else {
-      "Passo concluído"
-    }
-  } else {
-    step_label
+format_duration <- function(seconds) {
+  if (is.na(seconds) || !is.finite(seconds)) {
+    return("indisponível")
   }
-  cat(sprintf("[Passo %d/%d] %s\n", progress_state$current, progress_state$total, label))
-  flush.console()
+  total_seconds <- as.integer(round(seconds))
+  if (total_seconds < 0) {
+    total_seconds <- 0
+  }
+  hours <- total_seconds %/% 3600
+  minutes <- (total_seconds %% 3600) %/% 60
+  secs <- total_seconds %% 60
+  sprintf("%02d:%02d:%02d", hours, minutes, secs)
 }
 
-cat(sprintf("Total de passos planeados: %d\n", progress_state$total))
+create_record_progress <- function(total_records) {
+  state <- new.env(parent = emptyenv())
+  state$total <- if (is.na(total_records) || total_records < 1) 0L else as.integer(total_records)
+  state$current <- 0L
+  state$start_time <- Sys.time()
+
+  state$update <- function(increment = 1L) {
+    if (state$total == 0L) {
+      return()
+    }
+    increment <- as.integer(increment)
+    if (is.na(increment) || increment <= 0L) {
+      increment <- 0L
+    }
+    state$current <- min(state$total, state$current + increment)
+    now <- Sys.time()
+    elapsed <- as.numeric(difftime(now, state$start_time, units = "secs"))
+    average <- if (state$current == 0L) NA_real_ else elapsed / state$current
+    remaining <- if (is.na(average)) NA_real_ else (state$total - state$current) * average
+    cat(
+      sprintf(
+        "[Registo %d/%d] Tempo decorrido: %s | Estimativa restante: %s\n",
+        state$current,
+        state$total,
+        format_duration(elapsed),
+        format_duration(remaining)
+      )
+    )
+    flush.console()
+  }
+
+  state
+}
 folder_path <- readline(prompt = "Introduza o caminho completo da pasta que contém o ficheiro Excel: ")
 folder_path <- str_trim(folder_path)
 if (str_starts(folder_path, "\"") && str_ends(folder_path, "\"")) {
@@ -107,6 +124,10 @@ if (length(excel_files) == 1) {
 
 message("A ler o ficheiro: ", excel_path)
 data <- read_excel(excel_path)
+
+total_records <- nrow(data)
+record_progress <- create_record_progress(total_records)
+cat(sprintf("Total de registos a processar: %d\n", total_records))
 
 strip_diacritics <- function(values) {
   if (length(values) == 0) {
@@ -346,6 +367,14 @@ split_affiliations <- function(values) {
   paste(tokens, collapse = "; ")
 }
 
+`%||%` <- function(x, y) {
+  if (is.null(x) || length(x) == 0) {
+    y
+  } else {
+    x
+  }
+}
+
 extract_surname_initial <- function(name) {
   if (is.null(name) || length(name) == 0) {
     return(NA_character_)
@@ -557,56 +586,196 @@ institution_similarity_score <- function(a, b) {
   max(jaccard, char_similarity)
 }
 
-cluster_institution_keys <- function(keys, threshold = 0.65) {
+compute_institution_similarity <- function(keys) {
   keys <- unique(keys[keys != ""])
-  if (length(keys) <= 1) {
-    return(tibble(InstituicaoKey = keys, ClusterKey = keys))
+  if (length(keys) < 2) {
+    return(tibble(Key1 = character(), Key2 = character(), Score = numeric()))
   }
 
-  n <- length(keys)
-  parent <- seq_len(n)
-
-  find_parent <- function(x) {
-    while (parent[[x]] != x) {
-      parent[[x]] <<- parent[[parent[[x]]]]
-      x <- parent[[x]]
-    }
-    x
+  total_pairs <- choose(length(keys), 2)
+  if (total_pairs == 0) {
+    return(tibble(Key1 = character(), Key2 = character(), Score = numeric()))
   }
 
-  union_parent <- function(x, y) {
-    root_x <- find_parent(x)
-    root_y <- find_parent(y)
-    if (root_x == root_y) {
-      return()
-    }
-    parent[[root_y]] <<- root_x
-  }
+  results <- vector("list", total_pairs)
+  edge_index <- 1L
 
-  for (i in seq_len(n - 1)) {
-    for (j in seq((i + 1), n)) {
+  for (i in seq_len(length(keys) - 1)) {
+    for (j in seq((i + 1), length(keys))) {
       score <- institution_similarity_score(keys[[i]], keys[[j]])
-      if (!is.na(score) && score >= threshold) {
-        union_parent(i, j)
+      if (!is.na(score) && score > 0) {
+        results[[edge_index]] <- tibble(
+          Key1 = keys[[i]],
+          Key2 = keys[[j]],
+          Score = score
+        )
+        edge_index <- edge_index + 1L
       }
     }
   }
 
-  groups <- vapply(seq_len(n), find_parent, integer(1))
-  representative <- vapply(
-    split(seq_len(n), groups),
-    function(idx) {
-      keys[idx[which.min(nchar(keys[idx]))]]
-    },
-    character(1)
-  )
+  if (edge_index == 1L) {
+    tibble(Key1 = character(), Key2 = character(), Score = numeric())
+  } else {
+    bind_rows(results[seq_len(edge_index - 1L)])
+  }
+}
 
-  cluster_lookup <- representative[as.character(groups)]
+build_clusters_from_edges <- function(keys, edges) {
+  if (length(keys) == 0) {
+    return(list())
+  }
+
+  key_index <- seq_along(keys)
+  names(key_index) <- keys
+  parent <- seq_along(keys)
+
+  find_parent <- function(idx) {
+    while (parent[[idx]] != idx) {
+      parent[[idx]] <<- parent[[parent[[idx]]]]
+      idx <- parent[[idx]]
+    }
+    idx
+  }
+
+  union_parent <- function(key_a, key_b) {
+    idx_a <- key_index[[key_a]]
+    idx_b <- key_index[[key_b]]
+    if (is.na(idx_a) || is.na(idx_b)) {
+      return()
+    }
+    root_a <- find_parent(idx_a)
+    root_b <- find_parent(idx_b)
+    if (root_a == root_b) {
+      return()
+    }
+    parent[[root_b]] <<- root_a
+  }
+
+  if (nrow(edges) > 0) {
+    for (i in seq_len(nrow(edges))) {
+      union_parent(edges$Key1[[i]], edges$Key2[[i]])
+    }
+  }
+
+  groups <- vapply(seq_along(keys), find_parent, integer(1))
+  split(keys, groups)
+}
+
+cluster_institution_keys <- function(keys, threshold = 0.80, edges = NULL) {
+  unique_keys <- unique(keys[keys != ""])
+  if (length(unique_keys) == 0) {
+    return(tibble(InstituicaoKey = character(), ClusterKey = character()))
+  }
+  if (length(unique_keys) == 1) {
+    return(tibble(InstituicaoKey = unique_keys, ClusterKey = unique_keys))
+  }
+
+  if (is.null(edges)) {
+    similarity_edges <- compute_institution_similarity(unique_keys)
+  } else {
+    similarity_edges <- edges %>%
+      filter(Key1 %in% unique_keys & Key2 %in% unique_keys)
+  }
+
+  if (nrow(similarity_edges) == 0) {
+    return(tibble(InstituicaoKey = unique_keys, ClusterKey = unique_keys))
+  }
+
+  relevant_edges <- similarity_edges %>%
+    filter(Score >= threshold)
+
+  if (nrow(relevant_edges) == 0) {
+    return(tibble(InstituicaoKey = unique_keys, ClusterKey = unique_keys))
+  }
+
+  all_keys <- sort(unique(unique_keys))
+  clusters <- build_clusters_from_edges(all_keys, relevant_edges)
+
+  cluster_lookup <- setNames(all_keys, all_keys)
+  for (members in clusters) {
+    representative <- members[which.min(nchar(members))]
+    cluster_lookup[members] <- representative
+  }
 
   tibble(
-    InstituicaoKey = keys,
-    ClusterKey = unname(cluster_lookup)
+    InstituicaoKey = unique_keys,
+    ClusterKey = unname(cluster_lookup[unique_keys])
   )
+}
+
+cluster_keys_in_range <- function(edges, lower, upper, excluded_keys = character()) {
+  if (is.null(edges) || nrow(edges) == 0) {
+    return(list())
+  }
+
+  range_edges <- edges %>%
+    filter(Score >= lower & Score < upper)
+
+  if (length(excluded_keys) > 0) {
+    range_edges <- range_edges %>%
+      filter(!(Key1 %in% excluded_keys | Key2 %in% excluded_keys))
+  }
+
+  if (nrow(range_edges) == 0) {
+    return(list())
+  }
+
+  keys_range <- sort(unique(c(range_edges$Key1, range_edges$Key2)))
+  build_clusters_from_edges(keys_range, range_edges)
+}
+
+choose_standard_name <- function(variants, fallback = "") {
+  values <- variants[!is.na(variants) & variants != ""]
+  if (length(values) == 0) {
+    if (is.null(fallback) || fallback == "") {
+      return("")
+    }
+    return(fallback)
+  }
+
+  ordered <- values[order(nchar(values), values)]
+  ordered[[1]]
+}
+
+build_cluster_table <- function(clusters, tokens_lookup) {
+  valid_clusters <- clusters[sapply(clusters, length) > 1]
+  if (length(valid_clusters) == 0) {
+    return(tibble(`Nome standard` = character(), `Variantes agrupadas` = character()))
+  }
+
+  map_dfr(valid_clusters, function(member_keys) {
+    variant_lists <- map(member_keys, function(key) {
+      value <- tokens_lookup[[key]]
+      if (is.null(value) || length(value) == 0) {
+        key
+      } else {
+        value
+      }
+    })
+
+    variant_values <- variant_lists %>%
+      map(~ as.character(.x)) %>%
+      flatten_chr() %>%
+      str_trim()
+
+    if (length(variant_values) == 0) {
+      variant_values <- member_keys
+    }
+
+    unique_variants <- unique(variant_values[variant_values != ""])
+    standard <- choose_standard_name(unique_variants, fallback = member_keys[[1]])
+    standard <- str_squish(standard)
+    aggregated <- unique(c(standard, unique_variants))
+    aggregated <- aggregated[aggregated != ""]
+    aggregated_str <- if (length(aggregated) == 0) "" else paste(aggregated, collapse = "; ")
+
+    tibble(
+      `Nome standard` = standard,
+      `Variantes agrupadas` = aggregated_str
+    )
+  }) %>%
+    arrange(`Nome standard`)
 }
 
 group_blocks_by_edges <- function(total_blocks, edges_df) {
@@ -666,32 +835,6 @@ if (is.null(full_name_col)) {
   )
 }
 
-author_raw <- data[[full_name_col]]
-author_rows <- tibble(
-  RowID = seq_along(author_raw),
-  Autores = map(author_raw, split_authors)
-) %>%
-  mutate(Autores = map(Autores, ~ .x[.x != ""])) %>%
-  unnest(cols = Autores) %>%
-  rename(Autor = Autores) %>%
-  mutate(
-    Autor = str_squish(Autor),
-    AutorKey = make_author_key(Autor)
-  ) %>%
-  filter(!is.na(Autor) & Autor != "")
-
-if (nrow(author_rows) == 0) {
-  stop("Não foram encontrados autores no ficheiro fornecido.")
-}
-
-advance_progress("Extrair autores do ficheiro")
-
-author_counts <- author_rows %>%
-  count(RowID, name = "AutorCount")
-
-author_rows <- author_rows %>%
-  left_join(author_counts, by = "RowID")
-
 orcid_col <- find_column(
   data,
   c(
@@ -716,15 +859,76 @@ affiliation_col <- find_column(
   )
 )
 
+author_raw <- data[[full_name_col]]
+
+author_entries_list <- vector("list", total_records)
+orcid_entries_list <- vector("list", total_records)
+affiliation_entries_list <- vector("list", total_records)
+
+for (row_id in seq_len(total_records)) {
+  current_authors <- split_authors(author_raw[[row_id]])
+  if (length(current_authors) > 0) {
+    author_entries <- tibble(RowID = row_id, Autor = current_authors) %>%
+      mutate(
+        Autor = str_squish(Autor),
+        AutorKey = make_author_key(Autor)
+      ) %>%
+      filter(!is.na(Autor) & Autor != "")
+  } else {
+    author_entries <- tibble(RowID = integer(), Autor = character(), AutorKey = character())
+  }
+  author_entries_list[[row_id]] <- author_entries
+
+  if (!is.null(orcid_col)) {
+    current_orcid <- parse_orcid_entries(data[[orcid_col]][[row_id]])
+    if (nrow(current_orcid) > 0) {
+      current_orcid <- current_orcid %>%
+        mutate(RowID = row_id) %>%
+        select(RowID, AutorKey, ORCID)
+    } else {
+      current_orcid <- tibble(RowID = integer(), AutorKey = character(), ORCID = character())
+    }
+  } else {
+    current_orcid <- tibble(RowID = integer(), AutorKey = character(), ORCID = character())
+  }
+  orcid_entries_list[[row_id]] <- current_orcid
+
+  if (!is.null(affiliation_col)) {
+    current_affiliation <- parse_affiliation_entries(data[[affiliation_col]][[row_id]], row_id)
+  } else {
+    current_affiliation <- tibble(RowID = integer(), AutorKey = character(), Affiliation = character())
+  }
+  affiliation_entries_list[[row_id]] <- current_affiliation
+
+  record_progress$update()
+}
+
+author_rows <- if (length(author_entries_list) == 0) {
+  tibble(RowID = integer(), Autor = character(), AutorKey = character())
+} else {
+  bind_rows(author_entries_list)
+}
+
+if (nrow(author_rows) == 0) {
+  stop("Não foram encontrados autores no ficheiro fornecido.")
+}
+
+author_counts <- author_rows %>%
+  count(RowID, name = "AutorCount")
+
+author_rows <- author_rows %>%
+  left_join(author_counts, by = "RowID")
+
 if (is.null(orcid_col)) {
   message("Aviso: coluna de ORCID não encontrada. Será criado um campo vazio.")
 }
 
 orcid_map <- if (!is.null(orcid_col)) {
-  tibble(RowID = seq_len(nrow(data)), Valor = data[[orcid_col]]) %>%
-    mutate(Registos = map(Valor, parse_orcid_entries)) %>%
-    select(RowID, Registos) %>%
-    unnest(Registos)
+  if (length(orcid_entries_list) == 0) {
+    tibble(RowID = integer(), AutorKey = character(), ORCID = character())
+  } else {
+    bind_rows(orcid_entries_list)
+  }
 } else {
   tibble(RowID = integer(), AutorKey = character(), ORCID = character())
 }
@@ -771,16 +975,16 @@ orcid_orphans <- orcid_map %>%
   anti_join(assigned_orcids, by = c("RowID", "ORCID")) %>%
   distinct(ORCID)
 
-advance_progress("Associar ORCID aos autores")
 
 if (is.null(affiliation_col)) {
   message("Aviso: coluna de filiação/instituições não encontrada. Será criado um campo vazio.")
   affiliation_map <- tibble(RowID = integer(), AutorKey = character(), Affiliation = character())
 } else {
-  affiliation_map <- tibble(RowID = seq_len(nrow(data)), Valor = data[[affiliation_col]]) %>%
-    mutate(Registos = map2(Valor, RowID, parse_affiliation_entries)) %>%
-    select(Registos) %>%
-    unnest(Registos)
+  if (length(affiliation_entries_list) == 0) {
+    affiliation_map <- tibble(RowID = integer(), AutorKey = character(), Affiliation = character())
+  } else {
+    affiliation_map <- bind_rows(affiliation_entries_list)
+  }
   if (nrow(affiliation_map) == 0) {
     message("Aviso: coluna de filiação encontrada mas não foi possível associar instituições específicas aos autores.")
   }
@@ -804,7 +1008,6 @@ if (nrow(affiliation_unspecified) > 0) {
 authors_combined <- authors_with_orcid %>%
   left_join(affiliation_combined, by = c("RowID", "AutorKey"))
 
-advance_progress("Associar instituições aos autores")
 
 author_summary <- authors_combined %>%
   group_by(Autor) %>%
@@ -851,7 +1054,6 @@ result <- author_summary %>%
   arrange(AutorOrdenacao == "", AutorOrdenacao) %>%
   select(-AutorOrdenacao)
 
-advance_progress("Preparar folha principal")
 
 author_rows_for_groups <- author_summary %>%
   filter(Autor != "") %>%
@@ -1002,7 +1204,6 @@ orcid_groups_enriched <- bind_rows(grouped_orcid, without_orcid) %>%
 orcid_groups <- orcid_groups_enriched %>%
   select(Autores, ORCIDs, Instituicoes)
 
-advance_progress("Preparar folha agrupada por ORCID")
 
 blocks <- orcid_groups_enriched %>%
   mutate(
@@ -1054,6 +1255,23 @@ block_author_details <- block_author_details %>%
     InstituicaoTokens = map(Instituicoes, collect_affiliation_tokens)
   )
 
+institution_key_tokens <- block_author_details %>%
+  select(InstituicaoTokens) %>%
+  mutate(
+    InstituicaoTokens = map(InstituicaoTokens, ~ .x[!is.na(.x) & .x != ""])
+  ) %>%
+  filter(map_int(InstituicaoTokens, length) > 0) %>%
+  unnest_longer(InstituicaoTokens, values_to = "InstituicaoToken") %>%
+  mutate(
+    InstituicaoKey = normalize_institution_token(InstituicaoToken)
+  ) %>%
+  filter(InstituicaoKey != "") %>%
+  group_by(InstituicaoKey) %>%
+  summarise(
+    Variantes = list(sort(unique(InstituicaoToken))),
+    .groups = "drop"
+  )
+
 author_similarity_tokens <- block_author_details %>%
   filter(!is.na(SurnameInitial) & SurnameInitial != "") %>%
   mutate(InstituicaoTokens = map(InstituicaoTokens, ~ unique(.x))) %>%
@@ -1065,8 +1283,16 @@ author_similarity_tokens <- block_author_details %>%
   filter(InstituicaoKey != "") %>%
   distinct(BlockID, SurnameInitial, InstituicaoKey)
 
+institution_similarity_edges <- tibble(Key1 = character(), Key2 = character(), Score = numeric())
+institution_clusters <- tibble(InstituicaoKey = character(), ClusterKey = character())
+
 if (nrow(author_similarity_tokens) > 0) {
-  institution_clusters <- cluster_institution_keys(author_similarity_tokens$InstituicaoKey)
+  institution_similarity_edges <- compute_institution_similarity(author_similarity_tokens$InstituicaoKey)
+  institution_clusters <- cluster_institution_keys(
+    author_similarity_tokens$InstituicaoKey,
+    threshold = 0.80,
+    edges = institution_similarity_edges
+  )
   author_similarity_tokens <- author_similarity_tokens %>%
     left_join(institution_clusters, by = "InstituicaoKey") %>%
     mutate(
@@ -1164,7 +1390,6 @@ if (nrow(surname_initial_groups) == 0) {
     select(Autores, ORCIDs, Instituicoes)
 }
 
-advance_progress("Preparar folha agrupada por apelido/inicial")
 
 if (nrow(orcid_groups) == 0) {
   orcid_groups <- tibble(
@@ -1173,6 +1398,44 @@ if (nrow(orcid_groups) == 0) {
     Instituicoes = character()
   )
 }
+
+tokens_lookup <- institution_key_tokens$Variantes
+if (length(tokens_lookup) == 0) {
+  tokens_lookup <- list()
+}
+names(tokens_lookup) <- institution_key_tokens$InstituicaoKey
+
+clusters_strong <- institution_clusters %>%
+  group_by(ClusterKey) %>%
+  summarise(Members = list(sort(unique(InstituicaoKey))), .groups = "drop") %>%
+  pull(Members)
+
+group_table_80 <- build_cluster_table(clusters_strong, tokens_lookup)
+
+strong_member_keys <- if (length(clusters_strong) == 0) {
+  character()
+} else {
+  unique(unlist(clusters_strong[sapply(clusters_strong, length) > 1]))
+}
+
+clusters_mid <- cluster_keys_in_range(
+  institution_similarity_edges,
+  lower = 0.70,
+  upper = 0.80,
+  excluded_keys = strong_member_keys
+)
+
+group_table_70_80 <- build_cluster_table(clusters_mid, tokens_lookup)
+
+aggregation_output_path <- file.path(folder_path, "agrupamento_instituicoes.xlsx")
+
+write_xlsx(
+  list(
+    "Similaridade >= 0.80" = group_table_80,
+    "Similaridade 0.70-0.80" = group_table_70_80
+  ),
+  aggregation_output_path
+)
 
 output_path <- file.path(folder_path, "autores_unicos.xlsx")
 write_xlsx(
@@ -1184,6 +1447,6 @@ write_xlsx(
   output_path
 )
 
-advance_progress("Exportar ficheiro final")
 
 message("Ficheiro criado: ", output_path)
+message("Ficheiro de agrupamentos criado: ", aggregation_output_path)
