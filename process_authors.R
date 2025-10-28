@@ -386,12 +386,88 @@ normalize_institution_token <- function(value) {
 
   value[is.na(value)] <- ""
 
+  stopwords <- c(
+    "de", "da", "do", "das", "dos", "e", "and", "the", "of",
+    "del", "della", "di", "du", "des", "el", "la", "le", "los",
+    "las", "en", "y", "a", "an"
+  )
+
+  normalize_word <- function(word) {
+    if (word == "") {
+      return("")
+    }
+
+    if (word %in% stopwords) {
+      return("")
+    }
+
+    if (str_detect(word, "^[0-9]+$")) {
+      return(word)
+    }
+
+    canonical <- word
+    canonical <- str_replace_all(canonical, "^(univ|universidade|universita|universitat|universite|universidad)$", "university")
+    canonical <- str_replace_all(canonical, "^(dept|depto|dep|depart|departamento|departement)$", "department")
+    canonical <- str_replace_all(canonical, "^(ctr|centro|centre|cent|centres)$", "center")
+    canonical <- str_replace_all(canonical, "^(inst|institut|instituto|institution)$", "institute")
+    canonical <- str_replace_all(canonical, "^(tech|technol|technolo|tecnologia|tecnolog)$", "technology")
+    canonical <- str_replace_all(canonical, "^(sci|science|sciences)$", "science")
+    canonical <- str_replace_all(canonical, "^(res|research|recherche)$", "research")
+    canonical <- str_replace_all(canonical, "^(agro|agric|agriculture)$", "agriculture")
+    canonical <- str_replace_all(canonical, "^(environm|environment|environmental)$", "environment")
+    canonical <- str_replace_all(canonical, "^(biol|biology|biological)$", "biology")
+    canonical <- str_replace_all(canonical, "^(hlth|health)$", "health")
+    canonical <- str_replace_all(canonical, "^(sport|sports|sportiv|sporting)$", "sport")
+    canonical <- str_replace_all(canonical, "^(lab|laboratorio|laboratory)$", "laboratory")
+    canonical <- str_replace_all(canonical, "^(fac|faculdade|faculty)$", "faculty")
+
+    if (nchar(canonical) > 4) {
+      canonical <- str_replace(canonical, "s$", "")
+    }
+
+    reduced <- str_replace_all(canonical, "[aeiou]", "")
+    if (nchar(reduced) >= 3) {
+      canonical <- reduced
+    }
+
+    if (nchar(canonical) > 6) {
+      canonical <- str_sub(canonical, 1, 6)
+    }
+
+    canonical
+  }
+
   normalized <- strip_diacritics(value)
   normalized <- str_to_lower(normalized)
+  normalized <- str_replace_all(normalized, "[&/@]", " ")
   normalized <- str_replace_all(normalized, "[^a-z0-9]+", " ")
   normalized <- str_squish(normalized)
-  normalized[normalized == ""] <- ""
-  normalized
+
+  vapply(
+    normalized,
+    function(entry) {
+      if (entry == "") {
+        return("")
+      }
+
+      words <- str_split(entry, "\\s+")[[1]]
+      words <- words[words != ""]
+      if (length(words) == 0) {
+        return("")
+      }
+
+      canonical_words <- vapply(words, normalize_word, character(1))
+      canonical_words <- canonical_words[canonical_words != ""]
+      if (length(canonical_words) == 0) {
+        return("")
+      }
+
+      canonical_words <- sort(unique(canonical_words))
+      paste(canonical_words, collapse = " ")
+    },
+    character(1),
+    USE.NAMES = FALSE
+  )
 }
 
 group_blocks_by_edges <- function(total_blocks, edges_df) {

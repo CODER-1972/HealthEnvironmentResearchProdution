@@ -67,7 +67,10 @@ Science, e o script gera `autores_unicos.xlsx` com três folhas:
    (com base no primeiro nome) e que têm pelo menos uma instituição em comum.
    As listas de nomes, ORCID e instituições resultantes mantêm os blocos já
    existentes e são apresentadas separadas por `;`, seguindo a ordem em que os
-   autores surgem na segunda folha.
+   autores surgem na segunda folha. A identificação de instituições em comum
+   utiliza normalização avançada para reduzir diferenças ortográficas e de
+   abreviações (por exemplo, "Univ Tros Montes & Alto Douro" e "Univ Tras Os
+   Montes & Alto Douro" são considerados equivalentes).
 
 > ℹ️ **Importante:** Em ambientes remotos (por exemplo, Posit Cloud) não é
 > possível aceder diretamente a discos locais como `C:\\Users\\...`. Carregue o
