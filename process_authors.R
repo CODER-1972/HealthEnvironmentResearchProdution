@@ -35,11 +35,20 @@ format_duration <- function(seconds) {
   sprintf("%02d:%02d:%02d", hours, minutes, secs)
 }
 
+format_eta <- function(reference_time, seconds_remaining) {
+  if (is.na(seconds_remaining) || !is.finite(seconds_remaining)) {
+    return("indisponível")
+  }
+  eta_time <- reference_time + seconds_remaining
+  format(eta_time, "%Y-%m-%d %H:%M:%S")
+}
+
 create_record_progress <- function(total_records) {
   state <- new.env(parent = emptyenv())
   state$total <- if (is.na(total_records) || total_records < 1) 0L else as.integer(total_records)
   state$current <- 0L
   state$start_time <- Sys.time()
+  state$finalized <- FALSE
 
   state$update <- function(increment = 1L) {
     if (state$total == 0L) {
@@ -54,13 +63,32 @@ create_record_progress <- function(total_records) {
     elapsed <- as.numeric(difftime(now, state$start_time, units = "secs"))
     average <- if (state$current == 0L) NA_real_ else elapsed / state$current
     remaining <- if (is.na(average)) NA_real_ else (state$total - state$current) * average
+    eta <- format_eta(now, remaining)
     cat(
       sprintf(
-        "[Registo %d/%d] Tempo decorrido: %s | Estimativa restante: %s\n",
+        "[Registo %d/%d] Tempo decorrido: %s | Tempo restante estimado: %s | Conclusão estimada às %s\n",
         state$current,
         state$total,
         format_duration(elapsed),
-        format_duration(remaining)
+        format_duration(remaining),
+        eta
+      )
+    )
+    flush.console()
+  }
+
+  state$finish <- function() {
+    if (state$finalized) {
+      return()
+    }
+    state$finalized <- TRUE
+    now <- Sys.time()
+    elapsed <- as.numeric(difftime(now, state$start_time, units = "secs"))
+    cat(
+      sprintf(
+        "Processamento concluído. Tempo total decorrido: %s para %d registos.\n",
+        format_duration(elapsed),
+        state$total
       )
     )
     flush.console()
@@ -127,6 +155,7 @@ data <- read_excel(excel_path)
 
 total_records <- nrow(data)
 record_progress <- create_record_progress(total_records)
+on.exit(record_progress$finish(), add = TRUE)
 cat(sprintf("Total de registos a processar: %d\n", total_records))
 
 strip_diacritics <- function(values) {

@@ -52,9 +52,11 @@ Será solicitada a pasta onde se encontra o ficheiro Excel exportado do Web of
 Science, e o script gera `autores_unicos.xlsx` com três folhas:
 
 Durante a execução é apresentado um contador por registo no formato
-`[Registo atual/Total] Tempo decorrido: HH:MM:SS | Estimativa restante:
-HH:MM:SS`, permitindo acompanhar cada linha do ficheiro e a previsão de
-conclusão do processamento.
+`[Registo atual/Total] Tempo decorrido: HH:MM:SS | Tempo restante estimado:
+HH:MM:SS | Conclusão estimada às AAAA-MM-DD HH:MM:SS`, permitindo acompanhar
+cada linha do ficheiro, a previsão de término e o horário aproximado de
+conclusão do processamento. No final, o script indica também o tempo total
+gasto para processar todos os registos.
 
 1. **Autores** – Lista consolidada de autores, ORCID e instituições, preservando
    nomes sem ORCID com a coluna respetiva em branco e ordenando
